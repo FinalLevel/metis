@@ -1,4 +1,16 @@
-Medo Storage - Medium Data Object Storage
+###Metis Storage is a CDN and high available http server, which is especially usefull for storing and delivering of a huge number of small and medium size objects (images, js files, etc)
 ===
 
-Distributed content server - software for building a highly available, distributed storage &amp; delivery content system.
+***
+## Features
+
+* Written in C++
+* Integrated server side replication system
+* EPoll asynchronous event model
+* Keepalive connection for both user and data node connections
+* https protocol support
+* Distributed cache system
+* Distributed in-memmory index
+* WebDAV API
+* There are PHP, python and other language libraries available
+* An optional link protection mechanism
