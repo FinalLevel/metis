@@ -30,4 +30,4 @@ AX_BOOST_UNIT_TEST_FRAMEWORK
 AC_CHECK_HEADER(cstdint)
 
 AC_SUBST(CXXFLAGS)
-AC_OUTPUT(Makefile fl_libs/Makefile)
+AC_OUTPUT(Makefile fl_libs/Makefile manager/Makefile storage/Makefile)

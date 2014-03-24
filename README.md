@@ -1,4 +1,5 @@
-###Metis Storage is a CDN and high available http server, which is especially usefull for storing and delivering of a huge number of small and medium size objects (images, js files, etc)
+###Metis Storage is a CDN and high available http server, which is especially useful for storing and delivering 
+of a huge number of small and medium size objects (images, js files, etc)
 ===
 
 ***

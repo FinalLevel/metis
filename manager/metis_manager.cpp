@@ -17,7 +17,7 @@
 #include "metis_log.hpp"
 #include "time.hpp"
 #include "accept_thread.hpp"
-#include "metis_event.hpp"
+#include "manager_event.hpp"
 
 
 using fl::network::Socket;
@@ -42,6 +42,18 @@ void setSignals()
 
 int main(int argc, char *argv[])
 {
-	
+	std::unique_ptr<Config> config;
+	std::unique_ptr<EPollWorkerGroup> workerGroup;
+	try
+	{
+		config.reset(new Config(argc, argv));
+		if (!log::MetisLogSystem::init(config.get()))
+			return -1;
+		log::Warning::L("Starting Metis Manager server\n");
+	}
+	catch (...)	
+	{
+		return -1;
+	}
 	return 0;
 };

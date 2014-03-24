@@ -1,0 +1,4 @@
+[metis-server]
+log=/var/log/metis
+logLevel=4
+logStdout=on

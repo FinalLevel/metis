@@ -32,3 +32,14 @@ bool MetisLogSystem::log(
 	else
 		return false;
 }
+
+bool MetisLogSystem::init(fl::metis::Config *config)
+{
+	_logSystem.clearTargets();
+	_logSystem._logLevel = config->logLevel();
+	if (!config->logPath().empty())
+		_logSystem.addTarget(new fl::log::FileTarget(config->logPath().c_str()));
+	if (config->isLogStdout())
+		_logSystem.addTarget(new fl::log::ScreenTarget());
+	return true;
+}

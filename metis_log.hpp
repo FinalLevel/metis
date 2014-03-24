@@ -34,7 +34,7 @@ namespace fl {
 					const char *fmt, 
 					va_list args
 				);
-				//static bool init(fl::nomos::Config *config);
+				static bool init(fl::metis::Config *config);
 			private:
 				static MetisLogSystem _logSystem;
 				int _logLevel;
