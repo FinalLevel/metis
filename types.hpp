@@ -33,13 +33,13 @@ namespace fl {
 			{
 				struct
 				{
-					u_int32_t op;
+					uint32_t op;
 					TItemModTime modTime;
 				};
-				u_int64_t tag;
+				uint64_t tag;
 			};
 			ModTimeTag timeTag;
-		};
+		}  __attribute__((packed));
 	};
 };
 

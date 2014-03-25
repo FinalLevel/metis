@@ -26,6 +26,7 @@ AS_IF([test "x$HAVE_CXX11" != "x1"], [CXXFLAGS+=' -Wall -std=c++0x'])
 
 
 AX_BOOST_UNIT_TEST_FRAMEWORK
+AX_BOOST_FILESYSTEM
 
 AC_CHECK_HEADER(cstdint)
 
