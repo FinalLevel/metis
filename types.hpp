@@ -17,6 +17,8 @@
 namespace fl {
 	namespace metis
 	{
+		typedef uint32_t TServerID;
+		
 		typedef uint32_t TLevel;
 		typedef uint32_t TSubLevel;
 		typedef uint64_t TItemKey;

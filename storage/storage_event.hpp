@@ -25,6 +25,8 @@ namespace fl {
 			enum EMetisState : u_int8_t
 			{
 				ER_PARSE = 1,
+				ST_WAIT_REQUEST,
+				ST_FINISHED,
 			};
 
 			StorageEvent(const TEventDescriptor descr, const time_t timeOutTime);
@@ -33,7 +35,10 @@ namespace fl {
 			static void setInited();
 			static void exitFlush();
 		private:
+			void _endWork();
 			static bool _isReady;
+			NetworkBuffer *_networkBuffer;
+			EMetisState _curState;
 		};
 
 		
