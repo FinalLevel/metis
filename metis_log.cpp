@@ -33,13 +33,13 @@ bool MetisLogSystem::log(
 		return false;
 }
 
-bool MetisLogSystem::init(fl::metis::Config *config)
+bool MetisLogSystem::init(const int logLevel, const std::string &logPath, const bool isLogStdout)
 {
 	_logSystem.clearTargets();
-	_logSystem._logLevel = config->logLevel();
-	if (!config->logPath().empty())
-		_logSystem.addTarget(new fl::log::FileTarget(config->logPath().c_str()));
-	if (config->isLogStdout())
+	_logSystem._logLevel = logLevel;
+	if (!logPath.empty())
+		_logSystem.addTarget(new fl::log::FileTarget(logPath.c_str()));
+	if (isLogStdout)
 		_logSystem.addTarget(new fl::log::ScreenTarget());
 	return true;
 }

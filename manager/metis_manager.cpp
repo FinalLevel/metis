@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 	try
 	{
 		config.reset(new Config(argc, argv));
-		if (!log::MetisLogSystem::init(config.get()))
+		if (!log::MetisLogSystem::init(config->logLevel(), config->logPath(), config->isLogStdout()))
 			return -1;
 		log::Warning::L("Starting Metis Manager server\n");
 	}

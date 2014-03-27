@@ -11,7 +11,6 @@
 #include "slice.hpp"
 #include "metis_log.hpp"
 #include "dir.hpp"
-#include "manager/config.hpp"
 #include "buffer.hpp"
 #include "config.hpp"
 
@@ -68,20 +67,29 @@ void Slice::_rebuildIndexFromData(BString &indexFileName)
 	
 	log::Warning::L("Begin rebuild slice index file %s\n", indexFileName.c_str());
 
-	Buffer buf(MAX_BUF_SIZE + sizeof(SliceDataHeader) * 2);
+	Buffer buf(MAX_BUF_SIZE + sizeof(IndexEntry) * 2);
 	_dataFd.seek(sizeof(SliceDataHeader), SEEK_SET);
 	TSeek curSeek = sizeof(SliceDataHeader);
 	while (curSeek < _size)	{
-		ItemHeader &ih = *(ItemHeader*)buf.reserveBuffer(sizeof(ih));
-		if (_dataFd.read(&ih, sizeof(ih)) != sizeof(ih)) {
-			log::Fatal::L("Can't read an item header from slice dataFile\n");
+		IndexEntry &ie = *(IndexEntry*)buf.reserveBuffer(sizeof(IndexEntry));
+		if (_dataFd.read(&ie.header, sizeof(ie.header)) != sizeof(ie.header)) {
+			log::Fatal::L("Can't read an item header from slice dataFile while rebuilding %s\n", indexFileName.c_str());
 			throw SliceError("Can't read an item header from slice dataFile");
 		}
-		TSeek itemSeek = curSeek;
-		TSeek moveSize = ih.size + sizeof(ih);
-		_dataFd.seek(moveSize, SEEK_CUR);
-		curSeek += moveSize;
-		buf.add(itemSeek);
+
+		auto resSeek = _dataFd.seek(ie.header.size, SEEK_CUR);
+		if (resSeek <= 0) {
+			log::Fatal::L("Can't seek slice dataFile while rebuilding %s\n", indexFileName.c_str());
+			throw SliceError("Can't seek slice dataFile\n");
+		}
+		curSeek = resSeek;
+		
+		if (ie.header.status & ST_ITEM_DELETED) {
+			buf.truncate(buf.writtenSize() - sizeof(IndexEntry));
+		} else {
+			ie.pointer.seek = curSeek;
+			ie.pointer.sliceID = _sliceID;
+		}
 		if ((buf.writtenSize() >= MAX_BUF_SIZE) || (curSeek >= _size)) {
 			if (_indexFd.write(buf.begin(), buf.writtenSize()) != (ssize_t)buf.writtenSize()) {
 				log::Fatal::L("Can't write data to slice indexFile header %s\n", indexFileName.c_str());
@@ -144,15 +152,16 @@ bool Slice::_writeItem(const char *data, const ItemHeader &itemHeader, ItemPoint
 		log::Fatal::L("Can't write data to slice dataFile %u\n", _sliceID);
 		return false;
 	}
-	if (_indexFd.write(&itemHeader, sizeof(itemHeader)) != sizeof(itemHeader)) {
-		log::Fatal::L("Can't write itemHeader to slice indexFile %u\n", _sliceID);
-		return false;
-	}
 
 	pointer.sliceID = _sliceID;
 	pointer.seek = _size;
-	if (_indexFd.write(&pointer.seek, sizeof(pointer.seek)) != sizeof(pointer.seek))	{
-		log::Fatal::L("Can't write seek data to slice indexFile %u\n", _sliceID);
+	
+	IndexEntry ie;
+	ie.header = itemHeader;
+	ie.pointer = pointer;
+	
+	if (_indexFd.write(&ie, sizeof(ie)) != sizeof(ie))	{
+		log::Fatal::L("Can't write index entry to slice indexFile %u\n", _sliceID);
 		return false;
 	}
 	_size = _dataFd.seek(0, SEEK_CUR);
@@ -183,9 +192,6 @@ bool Slice::get(BString &data, const ItemRequest &item)
 		log::Fatal::L("Can't read data file from seek %u\n", _sliceID, item.pointer.seek);
 		return false;
 	}
-	ItemHeader &itemHeader = *(ItemHeader*)data.c_str();
-	if (itemHeader.level == 0)
-		return false;
 	return true;
 }
 
@@ -198,10 +204,9 @@ bool Slice::loadIndex(BString &data, TSeek &seek)
 	
 	if (seek < sizeof(SliceIndexHeader))
 		seek = sizeof(SliceIndexHeader);
-	TSize packetSize = sizeof(ItemHeader) + sizeof(TSeek);
 	while (seek < indexSize)
 	{
-		ssize_t maxSize = (((ssize_t)MAX_BUF_SIZE - data.size()) / packetSize) * packetSize;
+		ssize_t maxSize = (((ssize_t)MAX_BUF_SIZE - data.size()) / sizeof(IndexEntry)) * sizeof(IndexEntry);
 		if (!maxSize)
 			return true;
 	
@@ -209,8 +214,8 @@ bool Slice::loadIndex(BString &data, TSeek &seek)
 		if (readSize > maxSize)
 			readSize = maxSize;
 		
-		if (_dataFd.pread(data.reserveBuffer(readSize), readSize, seek) != readSize) {
-			log::Fatal::L("Can't read data index from seek %u\n", _sliceID, seek);
+		if (_indexFd.pread(data.reserveBuffer(readSize), readSize, seek) != readSize) {
+			log::Fatal::L("Can't read data index from sliceID %u / seek %u\n", _sliceID, seek);
 			return false;
 		}
 		seek += readSize;

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef __FL_METIS_CONFIG_HPP
-#define	__FL_METIS_CONFIG_HPP
+#ifndef __FL_METIS_MANAGER_CONFIG_HPP
+#define	__FL_METIS_MANAGER_CONFIG_HPP
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -49,4 +49,4 @@ namespace fl {
 	}
 }
 
-#endif // __FL_METIS_CONFIG_HPP
+#endif // __FL_METIS_MANAGER_CONFIG_HPP

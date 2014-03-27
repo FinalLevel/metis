@@ -9,8 +9,19 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "storage_event.hpp"
+#include "slice.hpp"
 
 using namespace fl::metis;
+
+
+SliceManager *StorageEvent::_sliceManager = NULL;
+bool StorageEvent::_isReady = false;
+
+void StorageEvent::setInited(SliceManager *sliceManager)
+{
+	_sliceManager = sliceManager;
+	_isReady = true;
+}
 
 
 StorageEvent::StorageEvent(const TEventDescriptor descr, const time_t timeOutTime)

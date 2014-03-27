@@ -1,4 +1,8 @@
-[metis-server]
+[metis-storage]
 log=/var/log/metis
 logLevel=4
 logStdout=on
+dbHost=localhost
+dbUser=metis
+dbPassword=blaBlaBla
+dbName=metis

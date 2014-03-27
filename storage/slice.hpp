@@ -33,22 +33,6 @@ namespace fl {
 		using fl::threads::AutoReadWriteLockRead;
 		using fl::threads::AutoReadWriteLockWrite;
 		
-		typedef uint32_t TSeek;
-		typedef uint32_t TSize;
-		typedef uint16_t TSliceID;
-		
-		struct ItemPointer
-		{
-			TSliceID sliceID;
-			TSeek seek;
-		} __attribute__((packed));
-		
-		struct ItemRequest
-		{
-			ItemPointer pointer;
-			TSize size;
-		} __attribute__((packed));
-		
 		class SliceError : public fl::exceptions::Error
 		{
 		public:

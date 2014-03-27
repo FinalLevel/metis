@@ -12,7 +12,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "log.hpp"
-#include "config.hpp"
+#include <string>
 
 namespace fl {
 	namespace metis {
@@ -34,7 +34,7 @@ namespace fl {
 					const char *fmt, 
 					va_list args
 				);
-				static bool init(fl::metis::Config *config);
+				static bool init(const int logLevel, const std::string &logPath, const bool isLogStdout);
 			private:
 				static MetisLogSystem _logSystem;
 				int _logLevel;

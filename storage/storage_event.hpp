@@ -32,11 +32,12 @@ namespace fl {
 			StorageEvent(const TEventDescriptor descr, const time_t timeOutTime);
 			virtual ~StorageEvent();
 			virtual const ECallResult call(const TEvents events);
-			static void setInited();
+			static void setInited(class SliceManager *sliceManager);
 			static void exitFlush();
 		private:
 			void _endWork();
 			static bool _isReady;
+			static class SliceManager *_sliceManager;
 			NetworkBuffer *_networkBuffer;
 			EMetisState _curState;
 		};

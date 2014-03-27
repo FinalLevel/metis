@@ -58,6 +58,7 @@ BOOST_AUTO_TEST_CASE (testSliceIndexRebuildFromData)
 		SliceManager sliceManager(levelPath.c_str(), 0.05, 10000);
 		ItemHeader ih;
 		std::string testData("test");
+		ih.status = 0;
 		ih.level = 1;
 		ih.subLevel = 1;
 		ih.itemKey = 1;
@@ -65,6 +66,8 @@ BOOST_AUTO_TEST_CASE (testSliceIndexRebuildFromData)
 		ih.timeTag.op = 1;
 		ih.size = testData.size();
 		ItemPointer ip;
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
+		ih.status = ST_ITEM_DELETED;
 		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
 		BString indexFile;
 		indexFile.sprintfSet("%s/index/%u", levelPath.c_str(), ip.sliceID);
@@ -83,11 +86,11 @@ BOOST_AUTO_TEST_CASE (testSliceIndexRebuildFromData)
 		TSliceID sliceID = 0;
 		TSeek seek = 0;
 		BOOST_REQUIRE(sliceManager.loadIndex(data, sliceID, seek));
-		BOOST_REQUIRE(data.size() == 36);
+		BOOST_REQUIRE(data.size() == 39); // size is important because of the manager communication protocol
 		
 		TSize &answerSize = *(TSize*)data.data();
 		BOOST_REQUIRE((answerSize & PACKET_FINISHED_FLAG) != 0);
-		BOOST_REQUIRE((answerSize & (~PACKET_FINISHED_FLAG)) == 32);
+		BOOST_REQUIRE((answerSize & (~PACKET_FINISHED_FLAG)) == 35);
 	}
 	catch (...)
 	{

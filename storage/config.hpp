@@ -1,6 +1,6 @@
 #pragma once
-#ifndef __FL_METIS_CONFIG_HPP
-#define	__FL_METIS_CONFIG_HPP
+#ifndef __FL_METIS_STORAGE_CONFIG_HPP
+#define	__FL_METIS_STORAGE_CONFIG_HPP
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -17,10 +17,12 @@
 #include <vector>
 #include "socket.hpp"
 #include "../types.hpp"
+#include "mysql.hpp"
 
 namespace fl {
 	namespace metis {
 		using fl::network::Socket;
+		using fl::db::Mysql;
 
 		const char * const DEFAULT_CONFIG = SYSCONFDIR "/metis.cnf";
 		const size_t MAX_BUF_SIZE = 300000;
@@ -33,9 +35,10 @@ namespace fl {
 		const size_t DEFAULT_BUFFER_SIZE = 32000;
 		const size_t DEFAULT_MAX_FREE_BUFFERS = 500;
 		
-		
-		
 		const uint32_t DEFAULT_CMD_PORT = 7008;
+
+		const double DEFAULT_MIN_DISK_FREE = 0.05; // 5%
+		const TSize DEFAULT_MAX_SLICE_SIZE = 1024 * 1024 * 1024; // 1GB
 		
 		class Config
 		{
@@ -85,14 +88,39 @@ namespace fl {
 			{
 				return _maxFreeBuffers;
 			}
+			bool connectDb(Mysql &sql);
+			bool initNetwork();
+			typedef uint8_t TStorageStatus;
+			static const TStorageStatus ST_STORAGE_ACTIVE = 0x1;
+			Socket &listenSocket()
+			{
+				return _listenSocket;
+			}
+			double minDiskFree() const
+			{
+				return _minDiskFree;
+			}
+			TSize maxSliceSize() const
+			{
+				return _maxSliceSize;
+			}
 		private:
-			void _parseNetworkParams(boost::property_tree::ptree &pt);
+			void _usage();
+			void _loadFromDB();
+			void _parseDBParams(boost::property_tree::ptree &pt);
+			
 			TServerID _serverID;
 			TStatus _status;
 			std::string _logPath;
 			int _logLevel;
 			
 			std::string _dataPath;
+			
+			std::string _dbHost;
+			std::string _dbUser;
+			std::string _dbPassword;
+			std::string _dbName;
+			uint16_t _dbPort;
 			
 			int _cmdTimeout;
 			size_t _workerQueueLength;
@@ -103,9 +131,13 @@ namespace fl {
 			
 			std::string _listenIp;
 			uint32_t _port;
-
+			TStorageStatus _storageStatus;
+			Socket _listenSocket;
+			
+			double _minDiskFree;
+			TSize _maxSliceSize;
 		};
 	}
 }
 
-#endif // __FL_METIS_CONFIG_HPP
+#endif // __FL_METIS_STORAGE_CONFIG_HPP

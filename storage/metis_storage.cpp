@@ -17,7 +17,8 @@
 #include "metis_log.hpp"
 #include "time.hpp"
 #include "accept_thread.hpp"
-#include "manager/manager_event.hpp"
+#include "storage_event.hpp"
+#include "slice.hpp"
 
 
 using fl::network::Socket;
@@ -43,13 +44,28 @@ void setSignals()
 int main(int argc, char *argv[])
 {
 	std::unique_ptr<Config> config;
+	std::unique_ptr<SliceManager> sliceManager;
 	std::unique_ptr<EPollWorkerGroup> workerGroup;
 	try
 	{
 		config.reset(new Config(argc, argv));
-		if (!log::MetisLogSystem::init(config.get()))
+		if (!log::MetisLogSystem::init(config->logLevel(), config->logPath(), config->isLogStdout()))
 			return -1;
-		log::Warning::L("Starting Metis Storage server\n");
+		
+		log::Warning::L("Starting Metis Storage server %u on %s\n", config->serverID(), config->dataPath().c_str());
+		if (!config->initNetwork())
+			return -1;
+		StorageEventFactory *factory = new StorageEventFactory(config.get());
+		StorageThreadSpecificDataFactory *dataFactory = new StorageThreadSpecificDataFactory(config.get());
+		workerGroup.reset(new EPollWorkerGroup(dataFactory, config->workers(), config->workerQueueLength(), 
+			EPOLL_WORKER_STACK_SIZE));
+		AcceptThread cmdThread(workerGroup.get(), &config->listenSocket(), factory);
+
+		sliceManager.reset(new SliceManager(config->dataPath().c_str(), config->minDiskFree(), config->maxSliceSize()));
+		
+		StorageEvent::setInited(sliceManager.get());
+		setSignals();
+		workerGroup->waitThreads();
 	}
 	catch (...)	
 	{
