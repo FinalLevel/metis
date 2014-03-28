@@ -8,4 +8,5 @@ if [ -d .git ]; then
 	cd fl_libs && git checkout ${currentBranch}
 	cd ..
 fi
+mkdir m4
 autoreconf --install
