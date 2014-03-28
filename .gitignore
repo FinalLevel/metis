@@ -1,0 +1,22 @@
+# autotools
+
+.deps
+Makefile
+Makefile\.in
+aclocal\.m4
+config\.guess
+config\.h
+config\.h\.in
+config\.log
+config\.status
+config\.sub
+configure
+configure\.ac
+depcomp
+install-sh
+missing
+stamp-h1
+autom4te\.cache
+manager/metis_manager
+storage/metis_storage
+storage/metis_storage_test
