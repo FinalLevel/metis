@@ -16,7 +16,8 @@ depcomp
 install-sh
 missing
 stamp-h1
-autom4te\.cache
+autom4te.cache
+autom4te.cache/
 manager/metis_manager
 storage/metis_storage
 storage/metis_storage_test
