@@ -24,7 +24,7 @@ namespace fl {
 		
 		typedef uint32_t TLevel;
 		typedef uint32_t TSubLevel;
-		typedef uint64_t TItemKey;
+		typedef uint32_t TItemKey;
 		typedef uint32_t TItemSize;
 		typedef uint32_t TItemModTime;
 		
