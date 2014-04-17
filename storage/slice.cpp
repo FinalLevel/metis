@@ -11,14 +11,13 @@
 #include "slice.hpp"
 #include "metis_log.hpp"
 #include "dir.hpp"
-#include "buffer.hpp"
 #include "config.hpp"
+#include "range_index.hpp"
 
 
 
 using namespace fl::metis;
 using fl::fs::Directory;
-using fl::utils::Buffer;
 
 void Slice::_openDataFile(BString &dataFileName)
 {
@@ -180,45 +179,89 @@ bool Slice::add(const char *data, const ItemHeader &itemHeader, ItemPointer &poi
 	return true;
 }
 
+bool Slice::remove(const ItemHeader &ih, const ItemPointer &pointer)
+{
+	AutoReadWriteLockWrite autoSyncRead(&_sync);
+	if (pointer.seek >= _size) {
+		log::Fatal::L("Can't remove out of range seek sliceID %u, seek %u\n", _sliceID, pointer.seek);
+		return false;
+	}
+	ItemHeader diskItemHeader;
+	if (_dataFd.pread(&diskItemHeader, sizeof(diskItemHeader), pointer.seek) != sizeof(diskItemHeader)) {
+		log::Fatal::L("Can't read deleting the item header file from seek sliceID %u, seek %u\n", _sliceID, pointer.seek);
+		return false;
+	}
+	if ((diskItemHeader.rangeID != ih.rangeID) || (diskItemHeader.itemKey != ih.itemKey)) {
+		log::Fatal::L("Can't delete the item: Headers are different sliceID %u, seek %u\n", _sliceID, pointer.seek);
+		return false;		
+	}
+	if (diskItemHeader.status & ST_ITEM_DELETED) {
+		log::Warning::L("The item is already deleted sliceID %u, seek %u\n", _sliceID, pointer.seek);
+		return true;		
+	}
+	if (diskItemHeader.timeTag <= ih.timeTag) {
+		diskItemHeader.status |= ST_ITEM_DELETED;
+		if (_dataFd.pwrite(&diskItemHeader.status, sizeof(diskItemHeader.status), 
+			pointer.seek) != sizeof(diskItemHeader.status)) {
+			log::Fatal::L("Can't write delete status to the file from seek sliceID %u, seek %u\n", _sliceID, pointer.seek);
+			return false;
+		}
+		IndexEntry ie;
+		diskItemHeader.timeTag = ih.timeTag;
+		ie.header = diskItemHeader;
+		ie.pointer = pointer;
+
+		if (_indexFd.write(&ie, sizeof(ie)) != sizeof(ie))	{
+			log::Fatal::L("Can't write remove index entry to slice indexFile %u\n", _sliceID);
+			return false;
+		}
+	
+		return true;
+	} else {
+		log::Fatal::L("Can't delete the newer item\n", _sliceID, pointer.seek);
+		return false;				
+	}
+}
+
 bool Slice::get(BString &data, const ItemRequest &item)
 {
 	AutoReadWriteLockRead autoSyncRead(&_sync);
 	if (item.pointer.seek >= _size) {
-		log::Fatal::L("Can't get out of range seek %u\n", _sliceID, item.pointer.seek);
+		log::Fatal::L("Can't get out of range sliceID %u, seek %u\n", _sliceID, item.pointer.seek);
 		return false;
 	}
 	ssize_t readSize = item.size + sizeof(ItemHeader);
 	if (_dataFd.pread(data.reserveBuffer(readSize), readSize, item.pointer.seek) != readSize) {
-		log::Fatal::L("Can't read data file from seek %u\n", _sliceID, item.pointer.seek);
+		log::Fatal::L("Can't read data file from seek sliceID %u, seek %u\n", _sliceID, item.pointer.seek);
 		return false;
 	}
 	return true;
 }
 
-bool Slice::loadIndex(BString &data, TSeek &seek)
+bool Slice::loadIndex(Index &index, Buffer &buf)
 {
-	AutoReadWriteLockWrite autoSyncWrite(&_sync);
-	TSeek indexSize = _indexFd.seek(0, SEEK_END);
-	if (seek >= indexSize)
-		return true;
-	
-	if (seek < sizeof(SliceIndexHeader))
-		seek = sizeof(SliceIndexHeader);
-	while (seek < indexSize)
-	{
-		ssize_t maxSize = (((ssize_t)MAX_BUF_SIZE - data.size()) / sizeof(IndexEntry)) * sizeof(IndexEntry);
-		if (!maxSize)
-			return true;
-	
-		ssize_t readSize = indexSize - seek;
-		if (readSize > maxSize)
-			readSize = maxSize;
+	auto leftSize = _indexFd.fileSize();
+	_indexFd.seek(sizeof(SliceIndexHeader), SEEK_SET);
+	leftSize -= sizeof(SliceIndexHeader);
+	while (leftSize > 0) {
+		static uint32_t CHUNK_SIZE = sizeof(IndexEntry) * 100000;
 		
-		if (_indexFd.pread(data.reserveBuffer(readSize), readSize, seek) != readSize) {
-			log::Fatal::L("Can't read data index from sliceID %u / seek %u\n", _sliceID, seek);
+		ssize_t readSize = CHUNK_SIZE;
+		if (readSize > leftSize)
+			readSize = leftSize;
+		buf.clear();
+		if (_indexFd.read(buf.reserveBuffer(readSize), readSize) != readSize) {
+			log::Fatal::L("Can't read data index from sliceID %u\n", _sliceID);
 			return false;
 		}
-		seek += readSize;
+		leftSize -= readSize;
+		while (buf.readPos() < buf.writtenSize()) {
+			IndexEntry &ie = *(IndexEntry*)buf.mapBuffer(sizeof(IndexEntry));
+			if (ie.header.status & ST_ITEM_DELETED)
+				index.remove(ie.header);
+			else
+				index.addNoLock(ie);
+		}
 	}
 	return true;
 }
@@ -298,6 +341,20 @@ bool SliceManager::add(const char *data, const ItemHeader &itemHeader, ItemPoint
 	}
 }
 
+bool SliceManager::remove(const ItemHeader &ih, const ItemPointer &pointer)
+{
+	AutoMutex autoSync(&_sync);
+	if (pointer.sliceID >= _slices.size())
+	{
+		log::Error::L("Can't get slice %u\n", pointer.sliceID);
+		return false;
+	}
+	TSlicePtr slice = _slices[pointer.sliceID];
+	autoSync.unLock();
+	return slice->remove(ih, pointer);
+	
+}
+
 bool SliceManager::get(BString &data, const ItemRequest &item)
 {
 	AutoMutex autoSync(&_sync);
@@ -311,29 +368,14 @@ bool SliceManager::get(BString &data, const ItemRequest &item)
 	return slice->get(data, item);
 }
 
-bool SliceManager::loadIndex(BString &data, TSliceID &sliceID, TSeek &seek)
+bool SliceManager::loadIndex(class Index &index)
 {
-	data.clear();
-	data.reserveBuffer(sizeof(TSize));
-	bool finished = true;
-	AutoMutex autoSync(&_sync);
-	for (; sliceID < _slices.size(); sliceID++)
+	Buffer buf;
+	for (auto slice = _slices.begin(); slice != _slices.end(); slice++)
 	{
-		TSlicePtr slice = _slices[sliceID];
-		autoSync.unLock();
-		if (!slice->loadIndex(data, seek))
+		if (!(*slice)->loadIndex(index, buf))
 			return false;
-		if ((size_t)data.size() > MAX_BUF_SIZE) {
-			finished = false;
-			break;
-		}
-		autoSync.lock(&_sync);
-		seek = 0;
 	}
-	TSize &answerSize = *(TSize*)data.data();
-	answerSize = data.size() - sizeof(TSize);
-	if (finished)
-		answerSize |= PACKET_FINISHED_FLAG;
 	return true;
 }
 

@@ -104,11 +104,18 @@ namespace fl {
 			{
 				return _maxSliceSize;
 			}
+			void setProcessUserAndGroup();
 		private:
 			void _usage();
 			void _loadFromDB();
 			void _parseDBParams(boost::property_tree::ptree &pt);
-			
+			void _parseUserGroupParams(boost::property_tree::ptree &pt);
+	
+			std::string _userName;
+			uint32_t _uid;
+			std::string _groupName;
+			uint32_t _gid;
+
 			TServerID _serverID;
 			TStatus _status;
 			std::string _logPath;

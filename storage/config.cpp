@@ -8,6 +8,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include <boost/property_tree/ini_parser.hpp>
+#include <grp.h>
+#include <pwd.h>
 
 #include "config.hpp"
 #include "log.hpp"
@@ -17,8 +19,9 @@ using namespace fl::metis;
 using namespace boost::property_tree::ini_parser;
 
 Config::Config(int argc, char *argv[])
-	: _serverID(0), _status(0), _logLevel(FL_LOG_LEVEL), _dbPort(0), _cmdTimeout(0), _workerQueueLength(0), _workers(0),	
-		_bufferSize(0), _maxFreeBuffers(0), _port(0), _storageStatus(0), _minDiskFree(0), _maxSliceSize(0)
+	: _uid(0), _gid(0), _serverID(0), _status(0), _logLevel(FL_LOG_LEVEL), _dbPort(0), _cmdTimeout(0), 
+		_workerQueueLength(0), _workers(0),	_bufferSize(0), _maxFreeBuffers(0), _port(0), _storageStatus(0), 
+		_minDiskFree(0), _maxSliceSize(0)
 {
 	std::string configFileName(DEFAULT_CONFIG);
 	double minDiskFree = DEFAULT_MIN_DISK_FREE;
@@ -60,6 +63,7 @@ Config::Config(int argc, char *argv[])
 			_status |= ST_LOG_STDOUT;
 		
 		_parseDBParams(pt);
+		_parseUserGroupParams(pt);
 		_loadFromDB();
 		
 		_cmdTimeout =  pt.get<decltype(_cmdTimeout)>("metis-storage.cmdTimeout", DEFAULT_SOCKET_TIMEOUT);
@@ -116,6 +120,39 @@ void Config::_loadFromDB()
 		throw std::exception();
 	}
 }
+
+
+void Config::_parseUserGroupParams(boost::property_tree::ptree &pt)
+{
+	_userName = pt.get<decltype(_userName)>("metis-storage.user", "nobody");
+	auto passwd = getpwnam(_userName.c_str());
+	if (passwd) {
+		_uid = passwd->pw_uid;
+	} else {
+		printf("User %s has not been found\n", _userName.c_str());
+		throw std::exception();
+	}
+
+	_groupName = pt.get<decltype(_groupName)>("metis-storage.group", "nobody");
+	auto groupData = getgrnam(_groupName.c_str());
+	if (groupData) {
+		_gid = groupData->gr_gid;
+	} else {
+		printf("Group %s has not been found\n", _groupName.c_str());
+		throw std::exception();
+	}
+}
+
+void Config::setProcessUserAndGroup()
+{
+	if (setgid(_gid) || setuid(_uid)) {
+		log::Error::L("Cannot set the process user %s (%d) and gid %s (%d)\n", _userName.c_str(), _uid, _groupName.c_str(),
+			_gid);
+	} else {
+		log::Error::L("Set the process user %s (%d) and gid %s (%d)\n", _userName.c_str(), _uid, _groupName.c_str(), _gid);
+	}
+}
+
 
 void Config::_parseDBParams(boost::property_tree::ptree &pt)
 {

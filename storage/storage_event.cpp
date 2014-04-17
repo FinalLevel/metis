@@ -14,12 +14,12 @@
 using namespace fl::metis;
 
 
-SliceManager *StorageEvent::_sliceManager = NULL;
+Storage *StorageEvent::_storage = NULL;
 bool StorageEvent::_isReady = false;
 
-void StorageEvent::setInited(SliceManager *sliceManager)
+void StorageEvent::setInited(Storage *storage)
 {
-	_sliceManager = sliceManager;
+	_storage = storage;
 	_isReady = true;
 }
 

@@ -11,6 +11,7 @@
 #include <boost/test/unit_test.hpp>
 #include "test_path.hpp"
 #include "slice.hpp"
+#include "range_index.hpp"
 #include "dir.hpp"
 
 using namespace fl::metis;
@@ -28,6 +29,7 @@ BOOST_AUTO_TEST_CASE (testSliceCreation)
 		ItemHeader ih;
 		std::string testData("test");
 		ih.level = 1;
+		ih.rangeID = 1;
 		ih.size = testData.size();
 		ItemPointer ip;
 		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
@@ -47,28 +49,97 @@ BOOST_AUTO_TEST_CASE (testSliceCreation)
 	}
 }
 
+
+BOOST_AUTO_TEST_CASE (testSliceIndexLoad)
+{
+	TestPath testPath("metis_slice");
+	BString levelPath;
+	levelPath.sprintfSet("%s/1", testPath.path());
+	Directory::makeDirRecursive(levelPath.c_str());
+	const TItemModTime MOD_TIME = 2;
+	const TRangeID RANGE_ID = 10;
+	try
+	{
+		SliceManager sliceManager(levelPath.c_str(), 0.05, 10000);
+		std::string testData("test");
+		ItemHeader ih;
+		ih.status = 0;
+		ih.rangeID = RANGE_ID;
+		ih.level = 1;
+		ih.subLevel = 1;
+		ih.itemKey = 1;
+		ih.timeTag.modTime = MOD_TIME;
+		ih.timeTag.op = 2;
+		ih.size = testData.size();
+		
+		ItemPointer ip;
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
+		ih.itemKey = 2;
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
+		BOOST_REQUIRE(sliceManager.remove(ih, ip));
+		
+		ih.status = ST_ITEM_DELETED;
+		ih.itemKey = 1;
+		ih.timeTag.modTime = 1;
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));	
+
+		ih.timeTag.modTime = MOD_TIME;
+		ih.timeTag.op = 1;
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));	
+
+	}
+	catch (...)
+	{
+		BOOST_CHECK_NO_THROW(throw);
+	}
+	
+	
+	try
+	{
+		SliceManager sliceManager(levelPath.c_str(), 0.05, 10000);
+		Index index;
+		BOOST_REQUIRE(sliceManager.loadIndex(index));
+
+		Range::Entry ie;
+		BOOST_CHECK(index.find(RANGE_ID, 2, ie) == false);
+		BOOST_CHECK(index.find(RANGE_ID, 1, ie) == true);
+		BOOST_CHECK(ie.timeTag.modTime == MOD_TIME);
+	}
+	catch (...)
+	{
+		BOOST_CHECK_NO_THROW(throw);
+	}
+		
+}
+
+
 BOOST_AUTO_TEST_CASE (testSliceIndexRebuildFromData)
 {
 	TestPath testPath("metis_slice");
 	BString levelPath;
 	levelPath.sprintfSet("%s/1", testPath.path());
 	Directory::makeDirRecursive(levelPath.c_str());
+	const TItemModTime MOD_TIME = 2;
+	const TRangeID RANGE_ID = 10;
 	try
 	{
 		SliceManager sliceManager(levelPath.c_str(), 0.05, 10000);
-		ItemHeader ih;
 		std::string testData("test");
+		ItemHeader ih;
 		ih.status = 0;
+		ih.rangeID = RANGE_ID;
 		ih.level = 1;
 		ih.subLevel = 1;
 		ih.itemKey = 1;
-		ih.timeTag.modTime = 1;
-		ih.timeTag.op = 1;
+		ih.timeTag.modTime = MOD_TIME;
+		ih.timeTag.op = 2;
 		ih.size = testData.size();
 		ItemPointer ip;
 		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
-		ih.status = ST_ITEM_DELETED;
+		ih.itemKey = 2;
 		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
+		BOOST_REQUIRE(sliceManager.remove(ih, ip));
+	
 		BString indexFile;
 		indexFile.sprintfSet("%s/index/%u", levelPath.c_str(), ip.sliceID);
 		BOOST_REQUIRE(unlink(indexFile.c_str()) == 0);
@@ -82,15 +153,13 @@ BOOST_AUTO_TEST_CASE (testSliceIndexRebuildFromData)
 	try
 	{
 		SliceManager sliceManager(levelPath.c_str(), 0.05, 10000);
-		BString data;
-		TSliceID sliceID = 0;
-		TSeek seek = 0;
-		BOOST_REQUIRE(sliceManager.loadIndex(data, sliceID, seek));
-		BOOST_REQUIRE(data.size() == 39); // size is important because of the manager communication protocol
-		
-		TSize &answerSize = *(TSize*)data.data();
-		BOOST_REQUIRE((answerSize & PACKET_FINISHED_FLAG) != 0);
-		BOOST_REQUIRE((answerSize & (~PACKET_FINISHED_FLAG)) == 35);
+		Index index;
+		BOOST_REQUIRE(sliceManager.loadIndex(index));
+
+		Range::Entry ie;
+		BOOST_CHECK(index.find(RANGE_ID, 2, ie) == false);
+		BOOST_CHECK(index.find(RANGE_ID, 1, ie) == true);
+		BOOST_CHECK(ie.timeTag.modTime == MOD_TIME);
 	}
 	catch (...)
 	{

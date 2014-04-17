@@ -24,26 +24,38 @@ namespace fl {
 		
 		typedef uint32_t TLevel;
 		typedef uint32_t TSubLevel;
+		typedef uint32_t TRangeID;
 		typedef uint32_t TItemKey;
 		typedef uint32_t TItemSize;
 		typedef uint32_t TItemModTime;
-		
+
+		union ModTimeTag
+		{
+			struct
+			{
+				uint32_t op;
+				TItemModTime modTime;
+			};
+			uint64_t tag;
+			bool operator <=(const ModTimeTag &tag) const
+			{
+				if (modTime < tag.modTime)
+					return true;
+				else if (modTime == tag.modTime)
+					return op <= tag.op;
+				else
+					return false;
+			}
+		};
+
 		struct ItemHeader
 		{
-			TStatus status;
+			TStatus status; // must be first field in a ItemHeader structure
+			TRangeID rangeID;
 			TLevel level;
 			TSubLevel subLevel;
 			TItemKey itemKey;
 			TItemSize size;
-			union ModTimeTag
-			{
-				struct
-				{
-					uint32_t op;
-					TItemModTime modTime;
-				};
-				uint64_t tag;
-			};
 			ModTimeTag timeTag;
 		}  __attribute__((packed));
 		

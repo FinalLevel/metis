@@ -19,6 +19,7 @@
 #include <string>
 #include "../types.hpp"
 #include "bstring.hpp"
+#include "buffer.hpp"
 #include "exception.hpp"
 #include "mutex.hpp"
 #include "read_write_lock.hpp"
@@ -32,6 +33,7 @@ namespace fl {
 		using fl::threads::ReadWriteLock;
 		using fl::threads::AutoReadWriteLockRead;
 		using fl::threads::AutoReadWriteLockWrite;
+		using fl::utils::Buffer;
 		
 		class SliceError : public fl::exceptions::Error
 		{
@@ -53,7 +55,8 @@ namespace fl {
 			}
 			bool add(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer);
 			bool get(BString &data, const ItemRequest &item);
-			bool loadIndex(BString &data, TSeek &seek);
+			bool loadIndex(class Index &index, Buffer &buf);
+			bool remove(const ItemHeader &ih, const ItemPointer &pointer);
 		private:
 			void _openDataFile(BString &dataFileName);
 			void _openIndexFile(BString &indexFileName);
@@ -87,7 +90,8 @@ namespace fl {
 			SliceManager(const char *path, const double minFree, const TSize maxSliceSize);
 			bool add(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer);
 			bool get(BString &data, const ItemRequest &item);
-			bool loadIndex(BString &data, TSliceID &sliceID, TSeek &seek);
+			bool remove(const ItemHeader &ih, const ItemPointer &pointer);
+			bool loadIndex(class Index &index);
 		private:
 			void _formDataPath(BString &path);
 			void _formIndexPath(BString &path);
