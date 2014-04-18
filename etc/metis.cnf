@@ -1,8 +1,22 @@
-[metis-storage]
-log=/var/log/metis
-logLevel=4
-logStdout=on
+[metis]
+user=metis
+group=metis
+
 dbHost=localhost
 dbUser=metis
 dbPassword=blaBlaBla
 dbName=metis
+
+[metis-manager]
+log=/var/log/metis/manager
+logLevel=4
+logStdout=on
+
+[metis-storage]
+; Overwrite user & group
+user=metis
+group=metis
+
+log=/var/log/metis/storage
+logLevel=4
+logStdout=on

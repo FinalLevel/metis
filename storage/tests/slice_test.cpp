@@ -26,22 +26,22 @@ BOOST_AUTO_TEST_CASE (testSliceCreation)
 	try
 	{
 		SliceManager sliceManager(testPath.path(), 0.05, 10);
-		ItemHeader ih;
+		IndexEntry ie;
+		ItemHeader &ih = ie.header;
 		std::string testData("test");
 		ih.level = 1;
 		ih.rangeID = 1;
 		ih.size = testData.size();
-		ItemPointer ip;
-		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
-		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ie));
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ie));
 		BOOST_CHECK(testPath.countFiles("data") == 2);
 		BOOST_CHECK(testPath.countFiles("index") == 2);
-		ItemRequest ie;
-		ie.pointer = ip;
-		ie.size = ih.size;
+		ItemRequest ir;
+		ir.pointer = ie.pointer;
+		ir.size = ih.size;
 		BString data;
-		BOOST_REQUIRE(sliceManager.get(data, ie));
-		BOOST_CHECK(data.size() == (BString::TSize)(ie.size + sizeof(ItemHeader)));
+		BOOST_REQUIRE(sliceManager.get(data, ir));
+		BOOST_CHECK(data.size() == (BString::TSize)(ir.size + sizeof(ItemHeader)));
 	}
 	catch (...)
 	{
@@ -62,7 +62,8 @@ BOOST_AUTO_TEST_CASE (testSliceIndexLoad)
 	{
 		SliceManager sliceManager(levelPath.c_str(), 0.05, 10000);
 		std::string testData("test");
-		ItemHeader ih;
+		IndexEntry ie;
+		ItemHeader &ih = ie.header;
 		ih.status = 0;
 		ih.rangeID = RANGE_ID;
 		ih.level = 1;
@@ -72,20 +73,19 @@ BOOST_AUTO_TEST_CASE (testSliceIndexLoad)
 		ih.timeTag.op = 2;
 		ih.size = testData.size();
 		
-		ItemPointer ip;
-		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ie));
 		ih.itemKey = 2;
-		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
-		BOOST_REQUIRE(sliceManager.remove(ih, ip));
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ie));
+		BOOST_REQUIRE(sliceManager.remove(ih, ie.pointer));
 		
 		ih.status = ST_ITEM_DELETED;
 		ih.itemKey = 1;
 		ih.timeTag.modTime = 1;
-		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));	
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ie));	
 
 		ih.timeTag.modTime = MOD_TIME;
 		ih.timeTag.op = 1;
-		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));	
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ie));	
 
 	}
 	catch (...)
@@ -125,7 +125,8 @@ BOOST_AUTO_TEST_CASE (testSliceIndexRebuildFromData)
 	{
 		SliceManager sliceManager(levelPath.c_str(), 0.05, 10000);
 		std::string testData("test");
-		ItemHeader ih;
+		IndexEntry ie;
+		ItemHeader &ih = ie.header;
 		ih.status = 0;
 		ih.rangeID = RANGE_ID;
 		ih.level = 1;
@@ -134,14 +135,14 @@ BOOST_AUTO_TEST_CASE (testSliceIndexRebuildFromData)
 		ih.timeTag.modTime = MOD_TIME;
 		ih.timeTag.op = 2;
 		ih.size = testData.size();
-		ItemPointer ip;
-		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
+	
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ie));
 		ih.itemKey = 2;
-		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ih, ip));
-		BOOST_REQUIRE(sliceManager.remove(ih, ip));
+		BOOST_REQUIRE(sliceManager.add(testData.c_str(), ie));
+		BOOST_REQUIRE(sliceManager.remove(ih, ie.pointer));
 	
 		BString indexFile;
-		indexFile.sprintfSet("%s/index/%u", levelPath.c_str(), ip.sliceID);
+		indexFile.sprintfSet("%s/index/%u", levelPath.c_str(), ie.pointer.sliceID);
 		BOOST_REQUIRE(unlink(indexFile.c_str()) == 0);
 	}
 	catch (...)

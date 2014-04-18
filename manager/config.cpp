@@ -17,26 +17,32 @@ using namespace fl::metis;
 using namespace boost::property_tree::ini_parser;
 
 Config::Config(int argc, char *argv[])
-	: _status(0), _logLevel(FL_LOG_LEVEL)
+	: GlobalConfig(argc, argv), _serverID(0), _status(0), _logLevel(FL_LOG_LEVEL), _port(0)
 {
-	std::string configFileName(DEFAULT_CONFIG);
 	char ch;
-	while ((ch = getopt(argc, argv, "c:")) != -1) {
+	optind = 1;
+	while ((ch = getopt(argc, argv, "s:")) != -1) {
 		switch (ch) {
-			case 'c':
-				configFileName = optarg;
+			case 's':
+				_serverID = atoi(optarg);
 			break;
 		}
 	}
-	
-	boost::property_tree::ptree pt;
+	if (!_serverID) {
+		printf("serverID is required\n");
+		_usage();
+		throw std::exception();
+	}
+
 	try
 	{
-		read_ini(configFileName.c_str(), pt);
-		_logPath = pt.get<decltype(_logPath)>("metis-server.log", _logPath);
-		_logLevel = pt.get<decltype(_logLevel)>("metis-server.logLevel", _logLevel);
-		if (pt.get<std::string>("metis-server.logStdout", "on") == "on")
+		_logPath = _pt.get<decltype(_logPath)>("metis-manager.log", _logPath);
+		_logLevel = _pt.get<decltype(_logLevel)>("metis-manager.logLevel", _logLevel);
+		if (_pt.get<std::string>("metis-manager.logStdout", "on") == "on")
 			_status |= ST_LOG_STDOUT;
+
+		_parseUserGroupParams(_pt, "metis-manager");
+		_loadFromDB();
 	}
 	catch (ini_parser_error &err)
 	{
@@ -45,7 +51,46 @@ Config::Config(int argc, char *argv[])
 	}
 	catch(...)
 	{
-		printf("Caught unknown exception while parsing ini file %s\n", configFileName.c_str());
+		printf("Caught unknown exception while parsing ini file %s\n", _configFileName.c_str());
 		throw;
 	}
 }
+
+void Config::_usage()
+{
+	printf("usage: metis_manager -s serverID [-c configPath]\n");
+}
+
+void Config::_loadFromDB()
+{
+	Mysql sql;
+	if (!connectDb(sql)) {
+		printf("Cannot connect to db, check db parameters\n");
+		throw std::exception();
+	}
+	enum EManagerFlds
+	{
+		FLD_IP,
+		FLD_PORT,
+	};
+	auto res = sql.query(sql.createQuery() << "SELECT ip, port FROM manager WHERE id=" <<= _serverID);
+	if (!res || !res->next())	{
+		printf("Cannot get information about %u manager\n", _serverID);
+		throw std::exception();
+	}
+	_listenIp = res->get<decltype(_listenIp)>(FLD_IP);
+	_port = res->get<decltype(_port)>(FLD_PORT);
+}
+
+bool Config::initNetwork()
+{
+	if (!_listenSocket.listen(_listenIp.c_str(), _port))	{
+		log::Error::L("Metis manager %u cannot begin listening on %s:%u\n", _serverID, _listenIp.c_str(), _port);
+		return false;
+	}
+	log::Warning::L("Metis manager %u is listening on %s:%u\n", _serverID, _listenIp.c_str(), _port);
+	return true;
+}
+
+
+

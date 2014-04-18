@@ -21,6 +21,8 @@ namespace fl {
 		{
 		public:
 			Storage(const char *path, const double minFree, const TSize maxSliceSize);
+			bool add(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer);
+			bool remove(const ItemHeader &itemHeader);
 		private:
 			SliceManager _sliceManager;
 			Index _index;

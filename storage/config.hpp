@@ -17,14 +17,13 @@
 #include <vector>
 #include "socket.hpp"
 #include "../types.hpp"
+#include "../global_config.hpp"
 #include "mysql.hpp"
 
 namespace fl {
 	namespace metis {
 		using fl::network::Socket;
-		using fl::db::Mysql;
 
-		const char * const DEFAULT_CONFIG = SYSCONFDIR "/metis.cnf";
 		const size_t MAX_BUF_SIZE = 300000;
 		
 		const int DEFAULT_SOCKET_TIMEOUT = 60;
@@ -40,7 +39,7 @@ namespace fl {
 		const double DEFAULT_MIN_DISK_FREE = 0.05; // 5%
 		const TSize DEFAULT_MAX_SLICE_SIZE = 1024 * 1024 * 1024; // 1GB
 		
-		class Config
+		class Config : public GlobalConfig
 		{
 		public:
 			Config(int argc, char *argv[]);
@@ -88,7 +87,6 @@ namespace fl {
 			{
 				return _maxFreeBuffers;
 			}
-			bool connectDb(Mysql &sql);
 			bool initNetwork();
 			typedef uint8_t TStorageStatus;
 			static const TStorageStatus ST_STORAGE_ACTIVE = 0x1;
@@ -104,31 +102,17 @@ namespace fl {
 			{
 				return _maxSliceSize;
 			}
-			void setProcessUserAndGroup();
 		private:
 			void _usage();
 			void _loadFromDB();
-			void _parseDBParams(boost::property_tree::ptree &pt);
-			void _parseUserGroupParams(boost::property_tree::ptree &pt);
 	
-			std::string _userName;
-			uint32_t _uid;
-			std::string _groupName;
-			uint32_t _gid;
-
 			TServerID _serverID;
 			TStatus _status;
 			std::string _logPath;
 			int _logLevel;
 			
 			std::string _dataPath;
-			
-			std::string _dbHost;
-			std::string _dbUser;
-			std::string _dbPassword;
-			std::string _dbName;
-			uint16_t _dbPort;
-			
+						
 			int _cmdTimeout;
 			size_t _workerQueueLength;
 			size_t _workers;

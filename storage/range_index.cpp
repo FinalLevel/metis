@@ -54,8 +54,10 @@ void Range::addNoLock(const IndexEntry &ie)
 	
 	Entry entry(ie);
 	auto res = _items.insert(TItemHash::value_type(itemKey, entry));
-	if (!res.second)
-		res.first->second = entry;
+	if (!res.second) {
+		if (res.first->second.timeTag <= entry.timeTag)
+			res.first->second = entry;
+	}
 }
 
 bool Index::remove(const ItemHeader &itemHeader)

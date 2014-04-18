@@ -19,8 +19,12 @@ namespace fl {
 	{
 		typedef uint32_t TServerID;
 		
-		typedef uint8_t TStatus;
-		static const TStatus ST_ITEM_DELETED = 0x80;
+		typedef uint8_t TItemStatus;
+		static const TItemStatus ST_ITEM_DELETED = 0x80;
+		
+		typedef uint8_t TManagerStatus;
+		typedef uint8_t TStorageStatus;
+		typedef uint32_t TStorageGroupID;
 		
 		typedef uint32_t TLevel;
 		typedef uint32_t TSubLevel;
@@ -50,7 +54,7 @@ namespace fl {
 
 		struct ItemHeader
 		{
-			TStatus status; // must be first field in a ItemHeader structure
+			TItemStatus status; // must be first field in a ItemHeader structure
 			TRangeID rangeID;
 			TLevel level;
 			TSubLevel subLevel;

@@ -15,15 +15,15 @@
 
 #include <string>
 #include <vector>
+#include "../global_config.hpp"
 #include "socket.hpp"
 
 namespace fl {
 	namespace metis {
 		using fl::network::Socket;
 
-		const char * const DEFAULT_CONFIG = SYSCONFDIR "/metis.cnf";
 		const size_t MAX_BUF_SIZE = 300000;
-		class Config
+		class Config : public GlobalConfig
 		{
 		public:
 			Config(int argc, char *argv[]);
@@ -41,10 +41,28 @@ namespace fl {
 			{
 				return _status & ST_LOG_STDOUT;
 			}
+			const TServerID serverID() const
+			{
+				return _serverID;
+			}
+			bool initNetwork();
+			Socket &listenSocket()
+			{
+				return _listenSocket;
+			}
+
 		private:
+			void _usage();
+			void _loadFromDB();
+			
+			TServerID _serverID;
 			TStatus _status;
 			std::string _logPath;
 			int _logLevel;
+			
+			std::string _listenIp;
+			uint32_t _port;
+			Socket _listenSocket;
 		};
 	}
 }

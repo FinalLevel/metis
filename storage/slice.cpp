@@ -137,12 +137,13 @@ Slice::Slice(const TSliceID sliceID, BString &dataFileName, BString &indexFileNa
 	_openIndexFile(indexFileName);
 }
 
-bool Slice::_writeItem(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer)
+bool Slice::_writeItem(const char *data, IndexEntry &ie)
 {
 	if (_dataFd.seek(_size, SEEK_SET) != (off_t)_size) {
 		log::Fatal::L("Can't seek slice dataFile %u\n", _sliceID);
 		return false;
 	}
+	const ItemHeader &itemHeader = ie.header;
 	if (_dataFd.write(&itemHeader, sizeof(itemHeader)) != sizeof(itemHeader)) {
 		log::Fatal::L("Can't write header to slice dataFile %u\n", _sliceID);
 		return false;
@@ -152,13 +153,9 @@ bool Slice::_writeItem(const char *data, const ItemHeader &itemHeader, ItemPoint
 		return false;
 	}
 
-	pointer.sliceID = _sliceID;
-	pointer.seek = _size;
-	
-	IndexEntry ie;
-	ie.header = itemHeader;
-	ie.pointer = pointer;
-	
+	ie.pointer.sliceID = _sliceID;
+	ie.pointer.seek = _size;
+		
 	if (_indexFd.write(&ie, sizeof(ie)) != sizeof(ie))	{
 		log::Fatal::L("Can't write index entry to slice indexFile %u\n", _sliceID);
 		return false;
@@ -167,11 +164,11 @@ bool Slice::_writeItem(const char *data, const ItemHeader &itemHeader, ItemPoint
 	return true;
 }
 
-bool Slice::add(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer)
+bool Slice::add(const char *data, IndexEntry &ie)
 {
 	AutoReadWriteLockWrite autoSyncWrite(&_sync);
 	TSeek curIndexSeek = _indexFd.seek(0, SEEK_CUR);
-	if (!_writeItem(data, itemHeader, pointer)) {
+	if (!_writeItem(data, ie)) {
 		_dataFd.truncate(_size);
 		_indexFd.truncate(curIndexSeek);
 		return false;
@@ -320,19 +317,20 @@ void SliceManager::_init()
 	throw SliceError("Can't initialize sliceManager");
 }
 
-bool SliceManager::add(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer)
+bool SliceManager::add(const char *data, IndexEntry &ie)
 {
+	ItemHeader &itemHeader = ie.header;
 	if ((int64_t)itemHeader.size > _leftSpace)
 		return false;
 
 	AutoMutex autoSync(&_sync);
-	
+
 	if ((_writeSlice.get() == NULL) || ((_writeSlice->size() + itemHeader.size) > _maxSliceSize))	{
 		if (!_addWriteSlice(itemHeader.size))
 			return false;
 	}
 	autoSync.unLock();
-	if (_writeSlice->add(data, itemHeader, pointer))
+	if (_writeSlice->add(data, ie))
 	{
 		_leftSpace = __sync_sub_and_fetch(&_leftSpace, itemHeader.size);
 		return true;
