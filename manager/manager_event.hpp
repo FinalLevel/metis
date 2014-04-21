@@ -22,7 +22,7 @@ namespace fl {
 		{
 		public:
 			ManagerHttpInterface();
-			virtual bool parseURI(const EHttpRequestType::EHttpRequestType reqType, const EHttpVersion::EHttpVersion version,
+			virtual bool parseURI(const char *cmdStart, const EHttpVersion::EHttpVersion version,
 				const std::string &host, const std::string &fileName, const std::string &query);
 			virtual EFormResult formResult(BString &networkBuffer, class HttpEvent *http);
 			virtual ~ManagerHttpInterface();

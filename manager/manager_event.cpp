@@ -20,9 +20,8 @@ ManagerHttpInterface::~ManagerHttpInterface()
 {
 }
 
-bool ManagerHttpInterface::parseURI(const EHttpRequestType::EHttpRequestType reqType, 
-	const EHttpVersion::EHttpVersion version, const std::string &host, const std::string &fileName, 
-	const std::string &query)
+bool ManagerHttpInterface::parseURI(const char *cmdStart, const EHttpVersion::EHttpVersion version, 
+	const std::string &host, const std::string &fileName, const std::string &query)
 {
 	return false;
 }
