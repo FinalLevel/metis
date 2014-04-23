@@ -5,10 +5,11 @@
 // Distributed under BSD (3-Clause) License (See
 // accompanying file LICENSE)
 //
-// Description: Metis event system classes implementation
+// Description: Metis manager http event system classes implementation
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "manager_event.hpp"
+#include "web.hpp"
+#include "config.hpp"
 
 using namespace fl::metis;
 
@@ -31,18 +32,29 @@ ManagerHttpInterface::EFormResult ManagerHttpInterface::formResult(BString &netw
 	return EFormResult::RESULT_ERROR;
 }
 
-			
-WorkEvent *create(const TEventDescriptor descr, const TIPv4 ip, const time_t timeOutTime, Socket *acceptSocket)
-{
-	return new HttpEvent(descr, timeOutTime, new ManagerHttpInterface());
-}
-
-ManagerThreadSpecificDataFactory::ManagerThreadSpecificDataFactory()
+ManagerEventFactory::ManagerEventFactory(Config *config)
+	: _config(config)
 {
 }
 
-ThreadSpecificData *ManagerThreadSpecificDataFactory::create()
+WorkEvent *ManagerEventFactory::create(const TEventDescriptor descr, const TIPv4 ip, const time_t timeOutTime, 
+	Socket *acceptSocket)
 {
-	return new ManagerHttpThreadSpecificData();
+	return new HttpEvent(descr, EPollWorkerGroup::curTime.unix() + _config->webTimeout(), new ManagerHttpInterface());
+}
+
+ManagerHttpThreadSpecificDataFactory::ManagerHttpThreadSpecificDataFactory(class Config *config)
+	: _config(config)
+{
+}
+
+ThreadSpecificData *ManagerHttpThreadSpecificDataFactory::create()
+{
+	return new ManagerHttpThreadSpecificData(_config);
+}
+
+ManagerHttpThreadSpecificData::ManagerHttpThreadSpecificData(class Config *config)
+	: config(config)
+{
 }
 

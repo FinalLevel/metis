@@ -25,16 +25,24 @@
 	
 #include "../types.hpp"
 #include "mysql.hpp"
+#include "mutex.hpp"
 
 	
 namespace fl {
 	namespace metis {
 		using fl::db::Mysql;
+		using fl::db::MysqlResult;
+		using fl::threads::Mutex;
+		using fl::threads::AutoMutex;
 		
 		class Range
 		{
 		public:
 			Range(const TRangeID rangeID, const TItemKey rangeIndex, const TServerID managerID);
+			TRangeID rangeID() const
+			{
+				return _rangeID;
+			}
 		private:
 			TRangeID _rangeID;
 			TItemKey _rangeIndex;
@@ -46,24 +54,34 @@ namespace fl {
 		public:
 			typedef uint8_t TStatus;
 			typedef uint32_t TIndexID;
-			RangeIndex(const TIndexID id, const TStatus status);
+			RangeIndex(MysqlResult *res);
 			const TIndexID id() const
 			{
 				return _id;
 			}
-			void add(const TRangeID rangeID, const TItemKey rangeIndex, const TServerID managerID);
+			void addNL(const TRangeID rangeID, const TItemKey rangeIndex, const TServerID managerID);
+			void update(RangeIndex *src);
+			bool fillAndAdd(ItemHeader &item, bool &needNotify);
 		private:
 			TIndexID _id;
 			TStatus _status;
 			typedef unordered_map<TItemKey, Range> TRangeMap;
 			TRangeMap _ranges;
+			Mutex _sync;
+			TItemKey _calcRangeIndex(const TItemKey itemKey);
+			TItemKey _rangeSize;
 		};
 		typedef std::shared_ptr<RangeIndex> TRangeIndexPtr;
 		
 		class Index
 		{
 		public:
+			Index(class Config *config);
 			bool loadAll(Mysql &sql);
+			bool parseURL(const std::string &host, const std::string &fileName, ItemHeader &item, TCrc &crc);
+			bool fillAndAdd(ItemHeader &item, bool &needNotify);
+			bool addLevel(const TLevel level, const TSubLevel subLevel);
+			bool loadLevel(const TLevel level, const TSubLevel subLevel, Mysql &sql);
 		private:
 			bool _loadIndex(Mysql &sql);
 			bool _loadIndexRanges(Mysql &sql);
@@ -75,6 +93,9 @@ namespace fl {
 			
 			typedef unordered_map<RangeIndex::TIndexID, TRangeIndexPtr> TRangeMap;
 			TRangeMap _indexRanges;
+			Mutex _sync;
+			
+			class Config *_config;
 		};
 	};
 };

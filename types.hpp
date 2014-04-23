@@ -32,6 +32,8 @@ namespace fl {
 		typedef uint32_t TItemKey;
 		typedef uint32_t TItemSize;
 		typedef uint32_t TItemModTime;
+		
+		typedef uint32_t TCrc;
 
 		union ModTimeTag
 		{

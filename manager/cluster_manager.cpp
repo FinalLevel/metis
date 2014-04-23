@@ -18,18 +18,18 @@ namespace EManagerFlds
 	enum EManagerFlds
 	{
 		ID,
-		IP,
-		PORT,
+		CMD_IP,
+		CMD_PORT,
 		STATUS,
 	};
 };
 
-const char * const MANAGER_SQL = "SELECT id, ip, port, status FROM manager";
+const char * const MANAGER_SQL = "SELECT id, cmdIp, cmdPort, status FROM manager";
 
 ManagerNode::ManagerNode(MysqlResult *res)
 	: _id(res->get<decltype(_id)>(EManagerFlds::ID)), 
-		_ip(Socket::ip2Long(res->get(EManagerFlds::IP))),
-		_port(res->get<decltype(_port)>(EManagerFlds::PORT)),  
+		_ip(Socket::ip2Long(res->get(EManagerFlds::CMD_IP))),
+		_port(res->get<decltype(_port)>(EManagerFlds::CMD_PORT)),  
 		_status(res->get<decltype(_status)>(EManagerFlds::STATUS))
 {
 }

@@ -15,6 +15,7 @@
 
 using namespace fl::metis;
 using namespace boost::property_tree::ini_parser;
+using fl::db::ESC;
 
 Config::Config(int argc, char *argv[])
 	: GlobalConfig(argc, argv), _serverID(0), _status(0), _logLevel(FL_LOG_LEVEL), _cmdTimeout(0), 
@@ -99,7 +100,7 @@ void Config::_loadFromDB()
 		FLD_PORT,
 		FLD_STATUS
 	};
-	auto res = sql.query(sql.createQuery() << "SELECT ip, port, status FROM storage WHERE id=" <<= _serverID);
+	auto res = sql.query(sql.createQuery() << "SELECT ip, port, status FROM storage WHERE id=" << ESC << _serverID);
 	if (!res || !res->next())	{
 		printf("Cannot get information about %u storage\n", _serverID);
 		throw std::exception();

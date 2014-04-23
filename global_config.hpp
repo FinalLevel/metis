@@ -21,6 +21,14 @@ namespace fl {
 		using fl::db::Mysql;
 		const char * const DEFAULT_CONFIG = SYSCONFDIR "/metis.cnf";
 		
+		const int DEFAULT_SOCKET_TIMEOUT = 60;
+		const size_t DEFAULT_SOCKET_QUEUE_LENGTH = 10000;
+		const size_t EPOLL_WORKER_STACK_SIZE = 100000;
+		const size_t DEFAULT_WORKERS_COUNT = 2;
+		
+		const size_t DEFAULT_BUFFER_SIZE = 32000;
+		const size_t DEFAULT_MAX_FREE_BUFFERS = 500;
+
 		class GlobalConfig
 		{
 		public:

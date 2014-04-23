@@ -9,7 +9,7 @@
 // Distributed under BSD (3-Clause) License (See
 // accompanying file LICENSE)
 //
-// Description: Metis event system classes
+// Description: Metis manager http event system classes
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "http_event.hpp"
@@ -33,28 +33,32 @@ namespace fl {
 		class ManagerEventFactory : public WorkEventFactory 
 		{
 		public:
-			ManagerEventFactory()
-			{
-			}
+			ManagerEventFactory(class Config *config);
 			virtual WorkEvent *create(const TEventDescriptor descr, const TIPv4 ip, const time_t timeOutTime, 
 				Socket *acceptSocket);
 			virtual ~ManagerEventFactory() {};
+		private:
+			class Config *_config;
 		};
 
 		class ManagerHttpThreadSpecificData : public HttpThreadSpecificData
 		{
 		public:
+			ManagerHttpThreadSpecificData(class Config *config);
 			virtual ~ManagerHttpThreadSpecificData() 
 			{
 			}
+			class Config *config;
 		};
 		
-		class ManagerThreadSpecificDataFactory : public ThreadSpecificDataFactory
+		class ManagerHttpThreadSpecificDataFactory : public ThreadSpecificDataFactory
 		{
 		public:
-			ManagerThreadSpecificDataFactory();
+			ManagerHttpThreadSpecificDataFactory(class Config *config);
 			virtual ThreadSpecificData *create();
-			virtual ~ManagerThreadSpecificDataFactory() {};
+			virtual ~ManagerHttpThreadSpecificDataFactory() {};
+		private:
+			class Config *_config;
 		};
 
 	};

@@ -46,11 +46,50 @@ namespace fl {
 				return _serverID;
 			}
 			bool initNetwork();
-			Socket &listenSocket()
+			Socket &cmdSocket()
 			{
-				return _listenSocket;
+				return _cmdSocket;
+			}
+			Socket &webSocket()
+			{
+				return _webSocket;
+			}
+			Socket &webDavSocket()
+			{
+				return _webDavSocket;
+			}
+			
+			const int cmdTimeout() const
+			{
+				return _cmdTimeout;
 			}
 
+			const int webTimeout() const
+			{
+				return _webTimeout;
+			}
+	
+			const int webDavTimeout() const
+			{
+				return _webDavTimeout;
+			}
+			size_t webWorkerQueueLength() const
+			{
+				return _webWorkerQueueLength;
+			}
+			size_t webWorkers() const
+			{
+				return _webWorkers;
+			}
+
+			size_t cmdWorkerQueueLength() const
+			{
+				return _cmdWorkerQueueLength;
+			}
+			size_t cmdWorkers() const
+			{
+				return _cmdWorkers;
+			}
 		private:
 			void _usage();
 			void _loadFromDB();
@@ -60,9 +99,29 @@ namespace fl {
 			std::string _logPath;
 			int _logLevel;
 			
-			std::string _listenIp;
-			uint32_t _port;
-			Socket _listenSocket;
+			std::string _cmdIp;
+			uint32_t _cmdPort;
+			Socket _cmdSocket;
+
+			std::string _webDavIp;
+			uint32_t _webDavPort;
+			Socket _webDavSocket;
+
+			std::string _webIp;
+			uint32_t _webPort;
+			Socket _webSocket;
+
+			int _cmdTimeout;
+			int _webTimeout;
+			int _webDavTimeout;
+			size_t _webWorkerQueueLength;
+			size_t _webWorkers;
+
+			size_t _cmdWorkerQueueLength;
+			size_t _cmdWorkers;
+				
+			size_t _bufferSize;
+			size_t _maxFreeBuffers;
 		};
 	}
 }

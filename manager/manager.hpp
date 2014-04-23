@@ -20,8 +20,16 @@ namespace fl {
 		class Manager
 		{
 		public:
-			bool loadAll(Config *config);
+			Manager(class Config *config);
+			bool loadAll();
+			Index &index()
+			{
+				return _index;
+			}
+			bool fillAndAdd(ItemHeader &item);
+			bool addLevel(const TLevel level, const TSubLevel subLevel);
 		private:
+			class Config *_config;
 			ClusterManager _clusterManager;
 			Index _index;
 		};

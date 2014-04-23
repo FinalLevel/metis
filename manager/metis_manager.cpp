@@ -17,8 +17,11 @@
 #include "metis_log.hpp"
 #include "time.hpp"
 #include "accept_thread.hpp"
-#include "manager_event.hpp"
+#include "web.hpp"
+#include "webdav.hpp"
+#include "cmd_event.hpp"
 #include "manager.hpp"
+
 
 
 using fl::network::Socket;
@@ -45,7 +48,8 @@ void setSignals()
 int main(int argc, char *argv[])
 {
 	std::unique_ptr<Config> config;
-	std::unique_ptr<EPollWorkerGroup> workerGroup;
+	std::unique_ptr<EPollWorkerGroup> webWorkerGroup;
+	std::unique_ptr<EPollWorkerGroup> cmdWorkerGroup;
 	std::unique_ptr<Manager> manager;
 	try
 	{
@@ -56,10 +60,26 @@ int main(int argc, char *argv[])
 			return -1;
 		config->setProcessUserAndGroup();
 
+		ManagerHttpThreadSpecificDataFactory *httpDataFactory = new ManagerHttpThreadSpecificDataFactory(config.get());
+		webWorkerGroup.reset(new EPollWorkerGroup(httpDataFactory, config->webWorkers(), config->webWorkerQueueLength(), 
+			EPOLL_WORKER_STACK_SIZE));
+		AcceptThread httpThread(webWorkerGroup.get(), &config->webSocket(), new ManagerEventFactory(config.get()));
+		
+		ManagerCmdThreadSpecificDataFactory *cmdDataFactory = new ManagerCmdThreadSpecificDataFactory(config.get());
+		cmdWorkerGroup.reset(new EPollWorkerGroup(cmdDataFactory, config->cmdWorkers(), config->cmdWorkerQueueLength(), 
+			EPOLL_WORKER_STACK_SIZE));
+		AcceptThread webDavThread(cmdWorkerGroup.get(), &config->webDavSocket(), 
+			new ManagerWebDavEventFactory(config.get()));
+
 		log::Warning::L("Starting Metis Manager server %u\n", config->serverID());
-		manager.reset(new Manager());
-		if (!manager->loadAll(config.get()))
+		manager.reset(new Manager(config.get()));
+		if (!manager->loadAll())
 			return -1;
+		
+		ManagerWebDavInterface::setInited(manager.get());
+		setSignals();
+		webWorkerGroup->waitThreads();
+		cmdWorkerGroup->waitThreads();
 	}
 	catch (...)	
 	{

@@ -13,10 +13,16 @@
 
 using namespace fl::metis;
 
-bool Manager::loadAll(Config *config)
+Manager::Manager(Config* config)
+	: _config(config), _index(config)
+{
+	
+}
+
+bool Manager::loadAll()
 {
 	Mysql sql;
-	if (!config->connectDb(sql)) {
+	if (!_config->connectDb(sql)) {
 		log::Error::L("Manager: Cannot connect to db, check db parameters\n");
 		return false;
 	}
@@ -26,5 +32,20 @@ bool Manager::loadAll(Config *config)
 	if (!_index.loadAll(sql)) {
 		return false;
 	}
+	return true;
+}
+
+bool Manager::addLevel(const TLevel level, const TSubLevel subLevel)
+{
+	if (!_index.addLevel(level, subLevel))
+		return false;
+	return true;
+}
+
+bool Manager::fillAndAdd(ItemHeader &item)
+{
+	bool needNotify = false;
+	if (!_index.fillAndAdd(item, needNotify))
+		return false;
 	return true;
 }
