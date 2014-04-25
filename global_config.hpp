@@ -35,6 +35,10 @@ namespace fl {
 			GlobalConfig(int argc, char *argv[]);
 			bool connectDb(Mysql &sql);
 			void setProcessUserAndGroup();
+			const std::string& dbName() const
+			{
+				return _dbName;
+			}
 		protected:
 			void _parseUserGroupParams(boost::property_tree::ptree &pt, const char *level);
 			std::string _configFileName;

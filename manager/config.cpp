@@ -4,7 +4,7 @@
 // Distributed under BSD (3-Clause) License (See
 // accompanying file LICENSE)
 //
-// Description: Metis server's config class
+// Description: Metis manager's server configuration class implementation
 ///////////////////////////////////////////////////////////////////////////////
 
 #include <boost/property_tree/ini_parser.hpp>
@@ -20,11 +20,11 @@ using fl::db::ESC;
 Config::Config(int argc, char *argv[])
 	: GlobalConfig(argc, argv), _serverID(0), _status(0), _logLevel(FL_LOG_LEVEL), _cmdPort(0), _webDavPort(0), 
 	_webPort(0), _cmdTimeout(0), _webTimeout(0), _webDavTimeout(0), _webWorkerQueueLength(0), _webWorkers(0),	
-	_cmdWorkerQueueLength(0), _cmdWorkers(0), _bufferSize(0), _maxFreeBuffers(0)
+	_cmdWorkerQueueLength(0), _cmdWorkers(0), _bufferSize(0), _maxFreeBuffers(0), _minimumCopies(0)
 {
 	char ch;
 	optind = 1;
-	while ((ch = getopt(argc, argv, "s:")) != -1) {
+	while ((ch = getopt(argc, argv, "s:c:")) != -1) {
 		switch (ch) {
 			case 's':
 				_serverID = atoi(optarg);
@@ -62,6 +62,8 @@ Config::Config(int argc, char *argv[])
 
 		_bufferSize = _pt.get<decltype(_bufferSize)>("metis-manager.bufferSize", DEFAULT_BUFFER_SIZE);
 		_maxFreeBuffers = _pt.get<decltype(_maxFreeBuffers)>("metis-manager.maxFreeBuffers", DEFAULT_MAX_FREE_BUFFERS);
+		
+		_minimumCopies = _pt.get<decltype(_minimumCopies)>("metis-manager.minimumCopies", DEFAULT_MINIMUM_COPIES);
 	}
 	catch (ini_parser_error &err)
 	{

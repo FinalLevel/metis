@@ -60,7 +60,8 @@ bool ManagerWebDavInterface::_mkCOL()
 
 bool ManagerWebDavInterface::_put(const char *dataStart)
 {
-	if (!_manager->fillAndAdd(_item)) {
+	TRangePtr range;
+	if (!_manager->fillAndAdd(_item, range)) {
 		_error = ERROR_409_CONFLICT;
 		return false;
 	};

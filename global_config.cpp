@@ -21,6 +21,7 @@ GlobalConfig::GlobalConfig(int argc, char *argv[])
 	: _configFileName(DEFAULT_CONFIG), _uid(0), _gid(0), _dbPort(0)
 {
 	char ch;
+	optind = 1;
 	while ((ch = getopt(argc, argv, "c:s:d:m:")) != -1) {
 		switch (ch) {
 			case 'c':

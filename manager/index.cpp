@@ -12,15 +12,41 @@
 #include "metis_log.hpp"
 #include "config.hpp"
 #include "util.hpp"
+#include "cluster_manager.hpp"
 
 
 using namespace fl::metis;
 using namespace fl::utils;
 using fl::db::ESC;
 
-Range::Range(const TRangeID rangeID, const TItemKey rangeIndex, const TServerID managerID)
-	: _rangeID(rangeID), _rangeIndex(rangeIndex), _managerID(managerID)
+namespace EIndexRangeFlds
 {
+	enum EIndexRangeFlds
+	{
+		ID,
+		INDEXID,
+		RANGE_INDEX,
+		MANAGERID,
+		STORAGES
+	};
+};
+
+const char * const INDEX_RANGE_SQL = "SELECT id, indexID, rangeIndex, managerID, storageIDs FROM index_range";
+
+Range::Range(MysqlResult *res, ClusterManager &clusterManager)
+	: _rangeID(res->get<decltype(_rangeID)>(EIndexRangeFlds::ID)), 
+		_rangeIndex(res->get<decltype(_rangeIndex)>(EIndexRangeFlds::RANGE_INDEX)), 
+		_managerID(res->get<decltype(_managerID)>(EIndexRangeFlds::MANAGERID))
+{
+	TServerIDList storageIds;
+	if (explode<TServerIDList::value_type>(res->get(EIndexRangeFlds::STORAGES), storageIds)) {
+		clusterManager.findStorages(storageIds, _storages);
+	}
+}
+
+void Range::update(Range *src)
+{
+	_managerID = src->_managerID;
 }
 
 namespace EIndexFlds
@@ -44,28 +70,26 @@ RangeIndex::RangeIndex(MysqlResult *res)
 {
 }
 
-void RangeIndex::addNL(const TRangeID rangeID, const TItemKey rangeIndex, const TServerID managerID)
+void RangeIndex::addNL(TRangePtr &range)
 { 
-	Range range(rangeID, rangeIndex, managerID);
-	auto res = _ranges.emplace(rangeIndex, range);
+	auto res = _ranges.emplace(range->rangeIndex(), range);
 	if (!res.second)
-		res.first->second = range;
+		res.first->second->update(range.get());
 }
 
-TItemKey RangeIndex::_calcRangeIndex(const TItemKey itemKey)
+TItemKey RangeIndex::calcRangeIndex(const TItemKey itemKey)
 {
 	return itemKey / _rangeSize;
 }
 
-bool RangeIndex::fillAndAdd(ItemHeader &item, bool &needNotify)
+bool RangeIndex::find(const TItemKey rangeIndex, TRangePtr &range)
 {
-	TItemKey rangeIndex = _calcRangeIndex(item.itemKey);
 	AutoMutex autoSync(&_sync);
-	auto range = _ranges.find(rangeIndex);
-	if (range == _ranges.end()) {
-		return false;
+	auto f = _ranges.find(rangeIndex);
+	if (f == _ranges.end()) {
+		return false;		
 	} else {
-		item.rangeID = range->second.rangeID();
+		range = f->second;
 		return true;
 	}
 }
@@ -76,12 +100,12 @@ void RangeIndex::update(RangeIndex *src)
 	_status = src->_status;
 }
 
-Index::Index(class Config *config)
+IndexManager::IndexManager(class Config *config)
 	: _config(config)
 {
 }
 
-bool Index::_loadIndex(Mysql &sql)
+bool IndexManager::_loadIndex(Mysql &sql)
 {
 	auto res = sql.query(INDEX_SQL);
 	if (!res)	{
@@ -96,20 +120,7 @@ bool Index::_loadIndex(Mysql &sql)
 	return true;	
 }
 
-namespace EIndexRangeFlds
-{
-	enum EIndexRangeFlds
-	{
-		ID,
-		INDEXID,
-		RANGE_INDEX,
-		MANAGERID
-	};
-};
-
-const char * const INDEX_RANGE_SQL = "SELECT id, indexID, rangeIndex, managerID FROM index_range";
-
-bool Index::_loadIndexRanges(Mysql &sql)
+bool IndexManager::_loadIndexRanges(Mysql &sql, ClusterManager &clusterManager)
 {
 	auto res = sql.query(INDEX_RANGE_SQL);
 	if (!res)	{
@@ -125,17 +136,14 @@ bool Index::_loadIndexRanges(Mysql &sql)
 			continue;
 		}
 		c++;
-		f->second->addNL(
-			res->get<TRangeID>(EIndexRangeFlds::ID), 
-			res->get<TItemKey>(EIndexRangeFlds::RANGE_INDEX),
-			res->get<TServerID>(EIndexRangeFlds::MANAGERID)
-		);
+		TRangePtr range(new Range(res.get(), clusterManager));
+		f->second->addNL(range);
 	}
 	log::Info::L("Load %u index ranges\n", c);
 	return true;
 }
 
-void Index::_add(const TLevel level, const TSubLevel sublevel, TRangeIndexPtr &rangeIndex)
+void IndexManager::_add(const TLevel level, const TSubLevel sublevel, TRangeIndexPtr &rangeIndex)
 {
 	static TSubLevelMap empty;
 	auto res = _index.emplace(level, empty);
@@ -146,18 +154,18 @@ void Index::_add(const TLevel level, const TSubLevel sublevel, TRangeIndexPtr &r
 	_indexRanges.emplace(rangeIndex->id(), rangeIndex);
 }
 
-bool Index::loadAll(Mysql &sql)
+bool IndexManager::loadAll(Mysql &sql, ClusterManager &clusterManager)
 {
 	if (!_loadIndex(sql))
 		return false;
 	
-	if (!_loadIndexRanges(sql))
+	if (!_loadIndexRanges(sql, clusterManager))
 		return false;
 
 	return true;
 }
 
-bool Index::parseURL(const std::string &host, const std::string &fileName, ItemHeader &item, TCrc &crc)
+bool IndexManager::parseURL(const std::string &host, const std::string &fileName, ItemHeader &item, TCrc &crc)
 {
 	bzero(&item, sizeof(item));
 	const char *pFileName = fileName.c_str();
@@ -183,7 +191,21 @@ bool Index::parseURL(const std::string &host, const std::string &fileName, ItemH
 	return true;
 }
 
-bool Index::fillAndAdd(ItemHeader &item, bool &needNotify)
+bool RangeIndex::loadRange(TRangePtr &range, const TItemKey rangeIndex, ClusterManager &clusterManager, Mysql &sql)
+{
+	auto sqlQuery = sql.createQuery();
+	sqlQuery << INDEX_RANGE_SQL << " WHERE indexID=" << ESC << _id << " AND rangeIndex=" << ESC << rangeIndex;
+	auto res = sql.query(sqlQuery);
+	if (!res || !res->next())	{
+		log::Error::L("Cannot load information about index ranges\n");
+		return false;
+	}
+	range.reset(new Range(res.get(), clusterManager));
+	add(range);
+	return true;
+}
+
+bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager &clusterManager, bool &needNotify)
 {
 	AutoMutex autoSync(&_sync);
 	auto level = _index.find(item.level);
@@ -196,12 +218,37 @@ bool Index::fillAndAdd(ItemHeader &item, bool &needNotify)
 		log::Warning::L("Can't find level %u / subLevel %u\n", item.level, item.subLevel);
 		return false;
 	}
-	TRangeIndexPtr rangeIndex = subLevel->second;
+	TRangeIndexPtr rangesIndex = subLevel->second;
 	autoSync.unLock();
-	return rangeIndex->fillAndAdd(item, needNotify);
+	
+	auto rangeIndex = rangesIndex->calcRangeIndex(item.itemKey);
+	if (!rangesIndex->find(rangeIndex, range)) {
+		Mysql sql;
+		if (!_config->connectDb(sql)) {
+			log::Error::L("RangeIndex::fillAndAdd: Cannot connect to db, check db parameters\n");
+			return false;
+		}
+		TServerIDList storageIDs;
+		if (!clusterManager.findFreeStorages(_config->minimumCopies(), storageIDs)) {
+			log::Error::L("RangeIndex::fillAndAdd: Cannot find free storages for a new range\n");
+			return false;
+		}
+		TServerID managerID = clusterManager.findFreeManager();
+		auto sqlBuf = sql.createQuery();
+		sqlBuf << "INSERT IGNORE INTO `index_range` SET indexID=" << ESC << rangesIndex->id() << ",rangeIndex=" 
+			<< ESC << rangeIndex << ",storageIDs=" << ESC << storageIDs << ",managerID=" << ESC << managerID;
+		if (!sql.execute(sqlBuf))
+			return false;
+
+		needNotify = true;
+		if (!rangesIndex->loadRange(range, rangeIndex, clusterManager, sql))
+			return false;
+	}
+	item.rangeID = range->rangeID();
+	return true;
 }
 
-bool Index::addLevel(const TLevel levelID, const TSubLevel subLevelID)
+bool IndexManager::addLevel(const TLevel levelID, const TSubLevel subLevelID)
 {
 	AutoMutex autoSync(&_sync);
 	auto level = _index.find(levelID);
@@ -227,10 +274,10 @@ bool Index::addLevel(const TLevel levelID, const TSubLevel subLevelID)
 	return loadLevel(levelID, subLevelID, sql);
 }
 
-bool Index::loadLevel(const TLevel level, const TSubLevel subLevel, Mysql &sql)
+bool IndexManager::loadLevel(const TLevel level, const TSubLevel subLevel, Mysql &sql)
 {
 	auto sqlBuf = sql.createQuery();
-	sqlBuf << INDEX_SQL << " WHERE level=" << ESC << level << ",subLevel=" << ESC << subLevel;
+	sqlBuf << INDEX_SQL << " WHERE level=" << ESC << level << " AND subLevel=" << ESC << subLevel;
 	auto res = sql.query(sqlBuf);
 	if (!res || !res->next()) {
 		log::Error::L("Index::addLevel: Cannot load index.id from db\n");

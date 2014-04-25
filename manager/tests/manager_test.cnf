@@ -1,0 +1,6 @@
+[metis]
+dbHost=localhost
+dbUser=metis
+dbPassword=blaBlaBla
+; Don't use the work database name
+dbName=metis_test

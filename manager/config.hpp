@@ -8,7 +8,7 @@
 // Distributed under BSD (3-Clause) License (See
 // accompanying file LICENSE)
 //
-// Description: Metis server's config class
+// Description: Metis manager's server configuration class
 ///////////////////////////////////////////////////////////////////////////////
 
 #include <boost/property_tree/ptree.hpp>
@@ -23,6 +23,8 @@ namespace fl {
 		using fl::network::Socket;
 
 		const size_t MAX_BUF_SIZE = 300000;
+		const size_t DEFAULT_MINIMUM_COPIES = 2;
+		
 		class Config : public GlobalConfig
 		{
 		public:
@@ -90,6 +92,10 @@ namespace fl {
 			{
 				return _cmdWorkers;
 			}
+			size_t minimumCopies() const
+			{
+				return _minimumCopies;
+			}
 		private:
 			void _usage();
 			void _loadFromDB();
@@ -122,6 +128,8 @@ namespace fl {
 				
 			size_t _bufferSize;
 			size_t _maxFreeBuffers;
+			
+			size_t _minimumCopies;
 		};
 	}
 }

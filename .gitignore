@@ -19,5 +19,6 @@ stamp-h1
 autom4te.cache
 autom4te.cache/
 manager/metis_manager
+manager/metis_manager_test
 storage/metis_storage
 storage/metis_storage_test

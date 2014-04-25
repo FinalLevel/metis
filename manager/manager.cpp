@@ -14,7 +14,7 @@
 using namespace fl::metis;
 
 Manager::Manager(Config* config)
-	: _config(config), _index(config)
+	: _config(config), _indexManager(config)
 {
 	
 }
@@ -29,7 +29,7 @@ bool Manager::loadAll()
 	if (!_clusterManager.loadAll(sql)) {
 		return false;
 	}
-	if (!_index.loadAll(sql)) {
+	if (!_indexManager.loadAll(sql, _clusterManager)) {
 		return false;
 	}
 	return true;
@@ -37,15 +37,15 @@ bool Manager::loadAll()
 
 bool Manager::addLevel(const TLevel level, const TSubLevel subLevel)
 {
-	if (!_index.addLevel(level, subLevel))
+	if (!_indexManager.addLevel(level, subLevel))
 		return false;
 	return true;
 }
 
-bool Manager::fillAndAdd(ItemHeader &item)
+bool Manager::fillAndAdd(ItemHeader &item, TRangePtr &range)
 {
 	bool needNotify = false;
-	if (!_index.fillAndAdd(item, needNotify))
+	if (!_indexManager.fillAndAdd(item, range, _clusterManager, needNotify))
 		return false;
 	return true;
 }

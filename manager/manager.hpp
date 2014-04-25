@@ -22,16 +22,16 @@ namespace fl {
 		public:
 			Manager(class Config *config);
 			bool loadAll();
-			Index &index()
+			IndexManager &index()
 			{
-				return _index;
+				return _indexManager;
 			}
-			bool fillAndAdd(ItemHeader &item);
+			bool fillAndAdd(ItemHeader &item, TRangePtr &range);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 		private:
 			class Config *_config;
 			ClusterManager _clusterManager;
-			Index _index;
+			IndexManager _indexManager;
 		};
 	};
 };
