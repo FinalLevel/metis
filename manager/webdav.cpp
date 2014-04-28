@@ -11,6 +11,7 @@
 #include "webdav.hpp"
 #include "config.hpp"
 #include "manager.hpp"
+#include "metis_log.hpp"
 
 using namespace fl::metis;
 
@@ -29,6 +30,27 @@ ManagerWebDavInterface::ManagerWebDavInterface()
 
 ManagerWebDavInterface::~ManagerWebDavInterface()
 {
+	_clearStorageEvents();
+}
+
+void ManagerWebDavInterface::_clearStorageEvents()
+{
+	for (auto s = _storageCMDEvents.begin(); s != _storageCMDEvents.end(); s++) {
+		if (*s) {
+			ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)(*s)->thread()->threadSpecificData();
+			threadSpec->storageCmdEventPool.free(*s);
+		}
+	}
+	_storageCMDEvents.clear();
+}
+
+bool ManagerWebDavInterface::reset()
+{
+	if (WebDavInterface::reset()) {
+		_clearStorageEvents();
+		return true;
+	} else
+		return false;
 }
 
 bool ManagerWebDavInterface::parseURI(const char* cmdStart, const EHttpVersion::EHttpVersion version, 
@@ -58,20 +80,37 @@ bool ManagerWebDavInterface::_mkCOL()
 	return true;
 }
 
-bool ManagerWebDavInterface::_put(const char *dataStart)
+WebDavInterface::EFormResult ManagerWebDavInterface::_formPut(BString &networkBuffer, class HttpEvent *http)
 {
+	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)http->thread()->threadSpecificData();
 	TRangePtr range;
-	if (!_manager->fillAndAdd(_item, range)) {
+	bool wasAdded = false;
+	if (!_manager->fillAndAdd(_item, range, wasAdded)) {
 		_error = ERROR_409_CONFLICT;
-		return false;
+		return EFormResult::RESULT_ERROR;
 	};
+	if (!wasAdded) { // need check previous copy
+		if (!threadSpec->storageCmdEventPool.get(range->storages(), _storageCMDEvents, http->thread())) {
+			_error = ERROR_503_SERVICE_UNAVAILABLE;
+			log::Error::L("_formPut: Can't get StorageCmd events from a pool\n");
+			return EFormResult::RESULT_ERROR;
+		}
+		for (auto ev = _storageCMDEvents.begin(); ev != _storageCMDEvents.end(); ev++) {
+			if (!(*ev)->setCMD(EStorageCMD::STORAGE_ITEM_INFO, this, _item)) {
+				delete (*ev);
+				*ev = NULL;
+			}
+		}
+		return EFormResult::RESULT_OK_WAIT;	
+	}
+	return EFormResult::RESULT_ERROR;
+}
+
+bool ManagerWebDavInterface::result(const EStorageResult::EStorageResult res, class StorageCMDEvent *storageEvent)
+{
 	return false;
 }
 
-bool ManagerWebDavInterface::_putFile()
-{
-	return false;
-}
 
 ManagerWebDavEventFactory::ManagerWebDavEventFactory(class Config *config)
 	: _config(config)

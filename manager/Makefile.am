@@ -2,7 +2,7 @@ LDADD = ../fl_libs/libfl.a
 AM_CPPFLAGS=-I../fl_libs -DSYSCONFDIR=\"${sysconfdir}\" $(MYSQL_INCLUDE)
 
 METIS_MANAGER_FILES = index.cpp manager.cpp cluster_manager.cpp config.cpp web.cpp \
-  webdav.cpp cmd_event.cpp ../metis_log.cpp ../global_config.cpp
+  webdav.cpp cmd_event.cpp storage_cmd_event.cpp ../metis_log.cpp ../global_config.cpp
 
 bin_PROGRAMS = metis_manager
 metis_manager_SOURCES = metis_manager.cpp $(METIS_MANAGER_FILES)

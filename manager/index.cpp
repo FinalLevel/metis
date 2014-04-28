@@ -205,7 +205,7 @@ bool RangeIndex::loadRange(TRangePtr &range, const TItemKey rangeIndex, ClusterM
 	return true;
 }
 
-bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager &clusterManager, bool &needNotify)
+bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager &clusterManager, bool &wasAdded)
 {
 	AutoMutex autoSync(&_sync);
 	auto level = _index.find(item.level);
@@ -240,7 +240,7 @@ bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager
 		if (!sql.execute(sqlBuf))
 			return false;
 
-		needNotify = true;
+		wasAdded = true;
 		if (!rangesIndex->loadRange(range, rangeIndex, clusterManager, sql))
 			return false;
 	}

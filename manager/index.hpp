@@ -49,6 +49,10 @@ namespace fl {
 				return _rangeIndex;
 			}
 			void update(Range *src);
+			TStorageList storages()
+			{
+				return _storages;
+			}
 		private:
 			TRangeID _rangeID;
 			TItemKey _rangeIndex;
@@ -93,7 +97,7 @@ namespace fl {
 			IndexManager(class Config *config);
 			bool loadAll(Mysql &sql, class ClusterManager &clusterManager);
 			bool parseURL(const std::string &host, const std::string &fileName, ItemHeader &item, TCrc &crc);
-			bool fillAndAdd(ItemHeader &item, TRangePtr &range, class ClusterManager &clusterManager, bool &needNotify);
+			bool fillAndAdd(ItemHeader &item, TRangePtr &range, class ClusterManager &clusterManager, bool &wasAdded);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 			bool loadLevel(const TLevel level, const TSubLevel subLevel, Mysql &sql);
 		private:

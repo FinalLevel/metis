@@ -15,12 +15,14 @@
 #include "cmd_event.hpp"
 #include "webdav_interface.hpp"
 #include "types.hpp"
+#include "compatibility.hpp"
+#include "storage_cmd_event.hpp"
 
 namespace fl {
 	namespace metis {
 		using fl::http::WebDavInterface;
 		
-		class ManagerWebDavInterface : public WebDavInterface
+		class ManagerWebDavInterface : public WebDavInterface, StorageCMDEventInterface
 		{
 		public:
 			ManagerWebDavInterface();
@@ -28,13 +30,16 @@ namespace fl {
 			virtual bool parseURI(const char *cmdStart, const EHttpVersion::EHttpVersion version,
 				const std::string &host, const std::string &fileName, const std::string &query);
 			static void setInited(class Manager *manager);
+			virtual bool result(const EStorageResult::EStorageResult res, class StorageCMDEvent *storageEvent);
+			virtual bool reset(); 
 		protected:
 			static bool _isReady;
 			static class Manager *_manager;
-			virtual bool _put(const char *dataStart);
-			virtual bool _putFile();
-			virtual bool _mkCOL();
+			virtual EFormResult _formPut(BString &networkBuffer, class HttpEvent *http) override;
+			virtual bool _mkCOL() override;
 			ItemHeader _item;
+			TStorageCMDEventVector _storageCMDEvents;
+			void _clearStorageEvents();
 		};
 		
 		class ManagerWebDavEventFactory : public WorkEventFactory 

@@ -8,7 +8,6 @@
 // Description: Manager's test configuration class
 ///////////////////////////////////////////////////////////////////////////////
 
-#include <bits/unique_ptr.h>
 
 #include "test_config.hpp"
 #include "bstring.hpp"

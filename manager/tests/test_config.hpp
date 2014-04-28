@@ -12,6 +12,7 @@
 // Description: Manager's test configuration class
 ///////////////////////////////////////////////////////////////////////////////
 
+#include <memory>
 #include "config.hpp"
 #include "mysql.hpp"
 

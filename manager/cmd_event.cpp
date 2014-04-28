@@ -23,7 +23,7 @@ ThreadSpecificData *ManagerCmdThreadSpecificDataFactory::create()
 }
 
 ManagerCmdThreadSpecificData::ManagerCmdThreadSpecificData(Config* config)
-	: config(config)
+	: config(config), storageCmdEventPool(config->maxConnectionPerStorage())
 {
 	
 }

@@ -26,7 +26,7 @@ namespace fl {
 			{
 				return _indexManager;
 			}
-			bool fillAndAdd(ItemHeader &item, TRangePtr &range);
+			bool fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 		private:
 			class Config *_config;

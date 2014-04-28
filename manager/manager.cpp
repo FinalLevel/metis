@@ -42,10 +42,11 @@ bool Manager::addLevel(const TLevel level, const TSubLevel subLevel)
 	return true;
 }
 
-bool Manager::fillAndAdd(ItemHeader &item, TRangePtr &range)
+bool Manager::fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded)
 {
-	bool needNotify = false;
-	if (!_indexManager.fillAndAdd(item, range, _clusterManager, needNotify))
+	wasAdded = false;
+	if (!_indexManager.fillAndAdd(item, range, _clusterManager, wasAdded))
 		return false;
+	
 	return true;
 }

@@ -42,7 +42,7 @@ bool ClusterManager::_loadManagers(Mysql &sql)
 		return false;
 	}
 	while (res->next()) {
-		ManagerNode *manager = new ManagerNode(res.get());
+		TManagerNodePtr manager(new ManagerNode(res.get()));
 		_managers.insert(TManagerNodeMap::value_type(manager->id(), manager));
 	}
 	log::Info::L("Load %u managers\n", _managers.size());
@@ -87,7 +87,7 @@ bool ClusterManager::_loadStorages(Mysql &sql)
 		return false;
 	}
 	while (res->next()) {
-		StorageNode *storage = new StorageNode(res.get());
+		TStorageNodePtr storage(new StorageNode(res.get()));
 		_storages.insert(TStorageNodeMap::value_type(storage->id(), storage));
 	}
 	log::Info::L("Load %u storages\n", _storages.size());

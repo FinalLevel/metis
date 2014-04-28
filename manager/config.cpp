@@ -20,7 +20,8 @@ using fl::db::ESC;
 Config::Config(int argc, char *argv[])
 	: GlobalConfig(argc, argv), _serverID(0), _status(0), _logLevel(FL_LOG_LEVEL), _cmdPort(0), _webDavPort(0), 
 	_webPort(0), _cmdTimeout(0), _webTimeout(0), _webDavTimeout(0), _webWorkerQueueLength(0), _webWorkers(0),	
-	_cmdWorkerQueueLength(0), _cmdWorkers(0), _bufferSize(0), _maxFreeBuffers(0), _minimumCopies(0)
+	_cmdWorkerQueueLength(0), _cmdWorkers(0), _bufferSize(0), _maxFreeBuffers(0), _minimumCopies(0), 
+	_maxConnectionPerStorage(0)
 {
 	char ch;
 	optind = 1;
@@ -64,6 +65,9 @@ Config::Config(int argc, char *argv[])
 		_maxFreeBuffers = _pt.get<decltype(_maxFreeBuffers)>("metis-manager.maxFreeBuffers", DEFAULT_MAX_FREE_BUFFERS);
 		
 		_minimumCopies = _pt.get<decltype(_minimumCopies)>("metis-manager.minimumCopies", DEFAULT_MINIMUM_COPIES);
+		
+		_maxConnectionPerStorage = _pt.get<decltype(_maxConnectionPerStorage)>("metis-manager.maxConnectionPerStorage", 
+			DEFAULT_MAX_CONNECTION_PER_STORAGE);
 	}
 	catch (ini_parser_error &err)
 	{

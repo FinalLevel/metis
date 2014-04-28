@@ -24,6 +24,7 @@ namespace fl {
 
 		const size_t MAX_BUF_SIZE = 300000;
 		const size_t DEFAULT_MINIMUM_COPIES = 2;
+		const size_t DEFAULT_MAX_CONNECTION_PER_STORAGE = 2;
 		
 		class Config : public GlobalConfig
 		{
@@ -96,6 +97,10 @@ namespace fl {
 			{
 				return _minimumCopies;
 			}
+			size_t maxConnectionPerStorage() const
+			{
+				return _maxConnectionPerStorage;
+			}
 		private:
 			void _usage();
 			void _loadFromDB();
@@ -130,6 +135,7 @@ namespace fl {
 			size_t _maxFreeBuffers;
 			
 			size_t _minimumCopies;
+			size_t _maxConnectionPerStorage;
 		};
 	}
 }

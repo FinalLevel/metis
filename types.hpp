@@ -85,7 +85,19 @@ namespace fl {
 		{
 			ItemHeader header;
 			ItemPointer pointer;
-		} __attribute__((packed));		
+		} __attribute__((packed));	
+		
+		enum EStorageCMD : uint8_t
+		{
+			STORAGE_NO_CMD = 0,
+			STORAGE_ITEM_INFO,
+		};
+		
+		struct StorageCmd
+		{
+			EStorageCMD cmd;
+			TSize size;
+		} __attribute__((packed));	;
 	};
 };
 

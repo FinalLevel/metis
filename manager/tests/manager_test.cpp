@@ -35,14 +35,17 @@ BOOST_AUTO_TEST_CASE (testLevelRangeCreation)
 		BOOST_REQUIRE(manager.addLevel(item.level, item.subLevel));
 
 		TRangePtr range;
-		BOOST_REQUIRE(manager.fillAndAdd(item, range));
+		bool wasAdded;
+		BOOST_REQUIRE(manager.fillAndAdd(item, range, wasAdded));
 		BOOST_REQUIRE(range->rangeID() == 1);
 		BOOST_REQUIRE(range->rangeIndex() == 0);
+		BOOST_REQUIRE(wasAdded);
 		
 		item.itemKey = 2000000;
-		BOOST_REQUIRE(manager.fillAndAdd(item, range));
+		BOOST_REQUIRE(manager.fillAndAdd(item, range, wasAdded));
 		BOOST_REQUIRE(range->rangeID() == 2);
 		BOOST_REQUIRE(range->rangeIndex() == 15);
+		BOOST_REQUIRE(wasAdded);
 		
 		Manager manager2(config.config());
 	} catch (...) {

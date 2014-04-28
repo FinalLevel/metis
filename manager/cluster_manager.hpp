@@ -63,6 +63,14 @@ namespace fl {
 			{
 				return true;
 			}
+			const TIPv4 ip() const
+			{
+				return _ip;
+			}
+			const uint32_t port() const
+			{
+				return _port;
+			}
 			static bool balanceStorage(StorageNode *a, StorageNode *b);
 		private:
 			TServerID _id;

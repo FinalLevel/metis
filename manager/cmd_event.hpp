@@ -12,7 +12,8 @@
 // Description: Metis manager command event system classes
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "web.hpp"
+#include "http_event.hpp"
+#include "storage_cmd_event.hpp"
 
 namespace fl {
 	namespace metis {
@@ -26,6 +27,7 @@ namespace fl {
 			{
 			}
 			class Config *config;
+			StorageCMDEventPool storageCmdEventPool;
 		};
 		
 		class ManagerCmdThreadSpecificDataFactory : public ThreadSpecificDataFactory
