@@ -49,3 +49,13 @@ bool Storage::remove(const ItemHeader &itemHeader)
 		return false;
 	}
 }
+
+bool Storage::findAndFill(ItemHeader &item)
+{
+	Range::Entry entry;
+	if (!_index.find(item.rangeID, item.itemKey, entry))
+		return false;	
+	item.size = entry.size;
+	item.timeTag = entry.timeTag;
+	return true;
+}

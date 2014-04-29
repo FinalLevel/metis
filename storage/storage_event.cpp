@@ -10,16 +10,21 @@
 
 #include "storage_event.hpp"
 #include "slice.hpp"
+#include "config.hpp"
+#include "metis_log.hpp"
+#include "storage.hpp"
 
 using namespace fl::metis;
 
 
 Storage *StorageEvent::_storage = NULL;
+Config *StorageEvent::_config = NULL;
 bool StorageEvent::_isReady = false;
 
-void StorageEvent::setInited(Storage *storage)
+void StorageEvent::setInited(Storage *storage, class Config *config)
 {
 	_storage = storage;
+	_config = config;
 	_isReady = true;
 }
 
@@ -48,9 +53,115 @@ void StorageEvent::_endWork()
 	}
 }
 
+bool StorageEvent::_reset()
+{
+	_curState = ST_WAIT_REQUEST;
+	_networkBuffer->clear();
+	setWaitRead();
+	if (_thread->ctrl(this)) {
+		_updateTimeout();
+		return true;
+	}
+	else
+		return false;
+}
+
+void StorageEvent::_updateTimeout()
+{
+	_timeOutTime = EPollWorkerGroup::curTime.unix() + _config->cmdTimeout();
+}
+
+StorageEvent::ECallResult StorageEvent::_nopCmd()
+{
+	_networkBuffer->clear();
+	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+	sa.satus = STORAGE_ANSWER_OK;
+	sa.size = 0;
+	return _send();
+}
+
+StorageEvent::ECallResult StorageEvent::_itemInfo(const StorageCmd &cmd, const char *data)
+{
+	if (cmd.size < sizeof(ItemHeader)) {
+		log::Error::L("StorageEvent::_itemInfo has received cmd.size < sizeof(ItemHeader)\n");
+		return FINISHED;
+	}
+	ItemHeader ih = *(ItemHeader*)data;
+	_networkBuffer->clear();
+	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+	sa.satus = STROAGE_ANSWER_NOT_FOUND;
+	sa.size = 0;
+	
+	if (_storage->findAndFill(ih)) {
+		sa.satus = STORAGE_ANSWER_OK;
+		sa.size = sizeof(ih);
+		_networkBuffer->add((char*)&ih, sizeof(ih));
+	}
+	return _send();
+}
+
+StorageEvent::ECallResult StorageEvent::_parseCmd(const StorageCmd &cmd, const char *data)
+{
+	switch (cmd.cmd) 
+	{
+		case EStorageCMD::STORAGE_ITEM_INFO:
+			return _itemInfo(cmd, data);
+		case EStorageCMD::STORAGE_NO_CMD:
+			return _nopCmd();
+	};
+	log::Error::L("Unsupported command %u\n", cmd.cmd);
+	_endWork();
+	return FINISHED;
+}
+
+StorageEvent::ECallResult  StorageEvent::_send()
+{
+	_curState = ST_WAIT_SEND;
+	auto res = _networkBuffer->send(_descr);
+	if (res == NetworkBuffer::IN_PROGRESS) {
+		setWaitSend();
+		if (_thread->ctrl(this)) {
+			_updateTimeout();
+			return CHANGE;
+		}
+		else
+			return FINISHED;
+	} else if (res == NetworkBuffer::OK) {
+		if (_reset())
+			return CHANGE;
+	}
+	return FINISHED;
+}
+
+StorageEvent::ECallResult StorageEvent::_read()
+{
+	if (!_networkBuffer) {
+		auto threadSpecData = static_cast<StorageThreadSpecificData*>(_thread->threadSpecificData());
+		_networkBuffer = threadSpecData->bufferPool.get();
+	}
+		
+	auto res = _networkBuffer->read(_descr);
+	if ((res == NetworkBuffer::ERROR) || (res == NetworkBuffer::CONNECTION_CLOSE))
+	{
+		_endWork();
+		return FINISHED;
+	}
+	else if (res == NetworkBuffer::IN_PROGRESS)
+		return SKIP;
+	if ((size_t)_networkBuffer->size() > sizeof(StorageCmd)) {
+		StorageCmd &cmd = *(StorageCmd*)_networkBuffer->c_str();
+		if (cmd.size + sizeof(StorageCmd) > (size_t)_networkBuffer->size())
+			return _parseCmd(cmd, _networkBuffer->c_str() + sizeof(StorageCmd));
+	}
+	_updateTimeout();
+	return CHANGE;
+}
+
 const StorageEvent::ECallResult StorageEvent::call(const TEvents events)
 {
 	if (_curState == ST_FINISHED)
+		return FINISHED;
+	if (!_isReady)
 		return FINISHED;
 	
 	if (((events & E_HUP) == E_HUP) || ((events & E_ERROR) == E_ERROR)) {
@@ -59,6 +170,12 @@ const StorageEvent::ECallResult StorageEvent::call(const TEvents events)
 	}
 	
 	if (events & E_INPUT) {
+		if (_curState == ST_WAIT_REQUEST) {
+			if (!_read()) {
+				_endWork();
+				return FINISHED;
+			}
+		}
 	}
 	
 	if (events & E_OUTPUT) {

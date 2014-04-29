@@ -25,29 +25,20 @@ void ManagerWebDavInterface::setInited(Manager *manager)
 }
 
 ManagerWebDavInterface::ManagerWebDavInterface()
+	: _storageCmd(NULL)
 {
 }
 
 ManagerWebDavInterface::~ManagerWebDavInterface()
 {
-	_clearStorageEvents();
-}
-
-void ManagerWebDavInterface::_clearStorageEvents()
-{
-	for (auto s = _storageCMDEvents.begin(); s != _storageCMDEvents.end(); s++) {
-		if (*s) {
-			ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)(*s)->thread()->threadSpecificData();
-			threadSpec->storageCmdEventPool.free(*s);
-		}
-	}
-	_storageCMDEvents.clear();
+	delete _storageCmd;
 }
 
 bool ManagerWebDavInterface::reset()
 {
 	if (WebDavInterface::reset()) {
-		_clearStorageEvents();
+		delete _storageCmd;
+		_storageCmd = NULL;
 		return true;
 	} else
 		return false;
@@ -83,32 +74,71 @@ bool ManagerWebDavInterface::_mkCOL()
 WebDavInterface::EFormResult ManagerWebDavInterface::_formPut(BString &networkBuffer, class HttpEvent *http)
 {
 	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)http->thread()->threadSpecificData();
-	TRangePtr range;
 	bool wasAdded = false;
+	TRangePtr range;
 	if (!_manager->fillAndAdd(_item, range, wasAdded)) {
 		_error = ERROR_409_CONFLICT;
 		return EFormResult::RESULT_ERROR;
 	};
 	if (!wasAdded) { // need check previous copy
-		if (!threadSpec->storageCmdEventPool.get(range->storages(), _storageCMDEvents, http->thread())) {
+		_storageCmd = threadSpec->storageCmdEventPool.mkStorageItemInfo(range->storages(), http->thread(), this, _item);
+		if (!_storageCmd) {
 			_error = ERROR_503_SERVICE_UNAVAILABLE;
-			log::Error::L("_formPut: Can't get StorageCmd events from a pool\n");
+			log::Error::L("_formPut: Can't make StorageItemInfo from the pool\n");
 			return EFormResult::RESULT_ERROR;
 		}
-		for (auto ev = _storageCMDEvents.begin(); ev != _storageCMDEvents.end(); ev++) {
-			if (!(*ev)->setCMD(EStorageCMD::STORAGE_ITEM_INFO, this, _item)) {
-				delete (*ev);
-				*ev = NULL;
-			}
-		}
+		_error = ERROR_503_SERVICE_UNAVAILABLE;
 		return EFormResult::RESULT_OK_WAIT;	
 	}
+	return _put(networkBuffer, threadSpec->storageCmdEventPool);
+}
+
+WebDavInterface::EFormResult ManagerWebDavInterface::_put(BString &networkBuffer, StorageCMDEventPool &pool)
+{
+	TSize size = _putData.size();
+	if (_status & ST_POST_SPLITED) {
+		size = _postTmpFile.fileSize();
+	}
+
+	StorageNode *storageNode = NULL;
+	if (_storageCmd) {
+		storageNode = static_cast<StorageCMDItemInfo*>(_storageCmd)->getPutStorage(size);
+		delete _storageCmd;
+		_storageCmd = NULL;
+	}
+
+	if (!storageNode) {
+		storageNode = _manager->getPutStorage(_item.rangeID, size);
+		if (!storageNode) {
+			log::Error::L("Put: Can't find storage to fit %u\n", size);
+			_error = ERROR_507_INSUFFICIENT_STORAGE;
+			return EFormResult::RESULT_ERROR;
+		}	
+	}
+	
+	_storageCmd = pool.mkStorageCMDPut(_item, storageNode, _httpEvent->thread(), this, 
+			(_status & ST_POST_SPLITED) ?	&_postTmpFile : NULL, _putData, size);
+	if (!_storageCmd) {
+		_error = ERROR_503_SERVICE_UNAVAILABLE;
+		log::Error::L("_formPut: Can't make StorageCMDPut from the pool\n");
+		return EFormResult::RESULT_ERROR;
+	}
+
+	//_storageCmd = new StorageCMDItemInfo
+	
 	return EFormResult::RESULT_ERROR;
 }
 
-bool ManagerWebDavInterface::result(const EStorageResult::EStorageResult res, class StorageCMDEvent *storageEvent)
+void ManagerWebDavInterface::itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
+	const ItemHeader *item)
 {
-	return false;
+	bool isComplete = static_cast<StorageCMDItemInfo*>(_storageCmd)->addAnswer(res, storageEvent, item);
+	if (!isComplete)
+		return;
+
+	auto putResult = _put(*_httpEvent->networkBuffer(), static_cast<StorageCMDItemInfo*>(_storageCmd)->pool());
+	if (putResult != EFormResult::RESULT_OK_WAIT)
+		_httpEvent->sendAnswer(putResult);
 }
 
 
@@ -120,6 +150,8 @@ ManagerWebDavEventFactory::ManagerWebDavEventFactory(class Config *config)
 WorkEvent *ManagerWebDavEventFactory::create(const TEventDescriptor descr, const TIPv4 ip, const time_t timeOutTime, 
 	Socket *acceptSocket)
 {
-	return new HttpEvent(descr, EPollWorkerGroup::curTime.unix() + _config->webDavTimeout(), 
-		new ManagerWebDavInterface());
+	auto interface = new ManagerWebDavInterface();
+	HttpEvent *httpEvent = new HttpEvent(descr, EPollWorkerGroup::curTime.unix() + _config->webDavTimeout(), interface);
+	interface->setHttpEvent(httpEvent);
+	return httpEvent;
 }

@@ -50,3 +50,13 @@ bool Manager::fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded)
 	
 	return true;
 }
+
+StorageNode *Manager::getPutStorage(const TRangeID rangeID, const TSize size)
+{
+	bool wasAdded = false;
+	StorageNode *node = _indexManager.getPutStorage(rangeID, size, _clusterManager, wasAdded);
+	if (!node)
+		return NULL;
+	
+	return node;
+}

@@ -14,6 +14,76 @@
 
 using namespace fl::metis;
 
+StorageCMDPut::StorageCMDPut(class StorageCMDEvent *storageEvent, class StorageCMDEventPool *pool, File *postTmpFile, 
+	BString &putData, const TSize size)
+	: _storageEvent(storageEvent), _pool(pool), _postTmpFile(postTmpFile), _putData(putData), _size(size)
+{
+}
+
+StorageCMDPut::~StorageCMDPut()
+{
+	if (_storageEvent)
+		_pool->free(_storageEvent);
+}
+
+StorageCMDItemInfo::StorageCMDItemInfo(const TStorageCMDEventVector &storageCMDEvents, StorageCMDEventPool *pool)
+ : _pool(pool)
+{
+	for (auto s = storageCMDEvents.begin(); s != storageCMDEvents.end(); s++) {
+		_answers.push_back(Answer(*s, (*s)->storage()));
+	}
+}
+
+StorageNode *StorageCMDItemInfo::getPutStorage(const TSize size)
+{
+	for (auto a = _answers.begin(); a != _answers.end(); a++) {
+		if (a->_status == EStorageAnswerStatus::STORAGE_ANSWER_OK) {
+			if (a->_storage->canPut(size))
+				return a->_storage;
+		}
+	}
+	return NULL;
+}
+
+bool StorageCMDItemInfo::addAnswer(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
+	const ItemHeader *item)
+{
+	for (auto a = _answers.begin(); a != _answers.end(); a++) {
+		if (a->_event == storageEvent) {
+			a->_status = res;
+			if (item)
+				a->_header = *item;
+			_pool->free(a->_event);
+			a->_event = NULL;
+		}
+	}
+	return _isComplete();
+}
+
+bool StorageCMDItemInfo::_isComplete()
+{
+	for (auto a = _answers.begin(); a != _answers.end(); a++) {
+		if (a->_event != NULL)
+			return false;
+	}
+	return true;
+}
+
+void StorageCMDItemInfo::_clearEvents()
+{
+	for (auto a = _answers.begin(); a != _answers.end(); a++) {
+		if (!a->_event)
+			continue;
+		_pool->free(a->_event);
+		a->_event = NULL;
+	}
+}
+
+StorageCMDItemInfo::~StorageCMDItemInfo()
+{
+	_clearEvents();
+}
+
 StorageCMDEventPool::~StorageCMDEventPool()
 {
 	for (auto storageVector = _freeEvents.begin(); storageVector != _freeEvents.end(); storageVector++)
@@ -42,23 +112,66 @@ void StorageCMDEventPool::free(StorageCMDEvent *se)
 	delete se;
 }
 
+StorageCMDEvent *StorageCMDEventPool::get(StorageNode *storageNode, EPollWorkerThread *thread, 
+	StorageCMDEventInterface *interface)
+{
+	auto f = _freeEvents.find(storageNode->id());
+	if ((f == _freeEvents.end()) || f->second.empty()) {
+		return new StorageCMDEvent(storageNode, thread, interface);
+	} else {
+		auto storageEvent = f->second.back();
+		storageEvent->setWaitState();
+		storageEvent->set(thread, interface);
+		f->second.pop_back();
+		return storageEvent;
+	}
+}
+
 bool StorageCMDEventPool::get(const TStorageList &storages, TStorageCMDEventVector &storageEvents, 
-	EPollWorkerThread *thread)
+	EPollWorkerThread *thread, StorageCMDEventInterface *interface)
 {
 	for (auto s = storages.begin(); s != storages.end(); s++) {
-		auto f = _freeEvents.find((*s)->id());
-		if (f == _freeEvents.end()) {
-			storageEvents.push_back(new StorageCMDEvent(s->get(), thread));
-		} else if (!f->second.empty()) {
-			storageEvents.push_back(f->second.back());
-			f->second.pop_back();
-		}
+		storageEvents.push_back(get(s->get(), thread, interface));
 	}
 	return true;
 }
 
-StorageCMDEvent::StorageCMDEvent(StorageNode *storage, EPollWorkerThread *thread)
-	: Event(0), _thread(thread), _interface(NULL), _storage(storage), _state(WAIT_CONNECTION), _cmd(STORAGE_NO_CMD)
+StorageCMDPut *StorageCMDEventPool::mkStorageCMDPut(const ItemHeader &item, StorageNode *storageNode, 
+	EPollWorkerThread *thread, StorageCMDEventInterface *interface, File *postTmpFile, BString &putData, const TSize size)
+{
+	StorageCMDEvent *storageEvent = get(storageNode, thread, interface);
+	if (!storageEvent)
+		return NULL;
+	if (!storageEvent->setPutCMD(item, postTmpFile, putData, size)) {
+		delete storageEvent;
+		return NULL;
+	}
+	return new StorageCMDPut(storageEvent, this, postTmpFile, putData, size);
+}
+
+StorageCMDItemInfo *StorageCMDEventPool::mkStorageItemInfo(const TStorageList &storages, EPollWorkerThread *thread, 
+	StorageCMDEventInterface *interface, const ItemHeader &item)
+{
+	TStorageCMDEventVector events;
+	if (!get(storages, events, thread, interface))
+		return NULL;
+	
+	TStorageCMDEventVector workEvents;
+	for (auto ev = events.begin(); ev != events.end(); ev++) {
+		if ((*ev)->setCMD(EStorageCMD::STORAGE_ITEM_INFO, item)) {
+			workEvents.push_back(*ev);
+		} else {
+			delete (*ev);
+		}
+	}
+	if (workEvents.empty())
+		return false;
+	
+	return new StorageCMDItemInfo(workEvents, this);
+}
+
+StorageCMDEvent::StorageCMDEvent(StorageNode *storage, EPollWorkerThread *thread, StorageCMDEventInterface *interface)
+	: Event(0), _thread(thread), _interface(interface), _storage(storage), _state(WAIT_CONNECTION), _cmd(STORAGE_NO_CMD)
 {
 	_socket.setNonBlockIO();
 	_descr = _socket.descr();
@@ -69,9 +182,8 @@ StorageCMDEvent::~StorageCMDEvent()
 	
 }
 
-bool StorageCMDEvent::setCMD(const EStorageCMD cmd, StorageCMDEventInterface *interface, ItemHeader &item)
+bool StorageCMDEvent::setCMD(const EStorageCMD cmd, const ItemHeader &item)
 {
-	_interface = interface;
 	_cmd = cmd;
 	_buffer.clear();
 	StorageCmd &storageCmd = *(StorageCmd*)_buffer.reserveBuffer(sizeof(StorageCmd));
@@ -163,23 +275,78 @@ bool StorageCMDEvent::removeFromPoll()
 	}
 }
 
+void StorageCMDEvent::_error()
+{
+	_state = ERROR;
+	removeFromPoll();
+	switch (_cmd)
+	{
+		case EStorageCMD::STORAGE_ITEM_INFO:
+			_interface->itemInfo(STORAGE_ANSWER_ERROR, this, NULL);
+		break;
+		case EStorageCMD::STORAGE_NO_CMD:
+		break;
+	};
+}
+
+void StorageCMDEvent::_cmdReady(const StorageAnswer &sa, const char *data)
+{
+	switch (_cmd)
+	{
+		case EStorageCMD::STORAGE_ITEM_INFO:
+			if (sa.satus == EStorageAnswerStatus::STROAGE_ANSWER_NOT_FOUND) 
+				_interface->itemInfo(sa.satus, this, NULL);
+			else if (sa.size >=  sizeof(ItemHeader)) {
+				ItemHeader &ih = *(ItemHeader*)data;
+				_interface->itemInfo(sa.satus, this, &ih);
+			}
+			_state = READY;
+		break;
+		case EStorageCMD::STORAGE_NO_CMD:
+		break;
+	};
+	
+}
+
+bool StorageCMDEvent::_read()
+{
+	auto res = _buffer.read(_descr);
+	if ((res == NetworkBuffer::ERROR) || (res == NetworkBuffer::CONNECTION_CLOSE))
+		return false;
+	else if (res == NetworkBuffer::IN_PROGRESS)
+		return true;
+	if ((size_t)_buffer.size() > sizeof(StorageAnswer)) {
+		StorageAnswer &sa = *(StorageAnswer*)_buffer.c_str();
+		if (sa.satus == EStorageAnswerStatus::STORAGE_ANSWER_ERROR) {
+			log::Warning::L("Manager has received an error status from storage\n");
+			return false;
+		}
+		if (sa.size + sizeof(StorageAnswer) >= (size_t)_buffer.size()) {
+			_cmdReady(sa, _buffer.c_str() + sizeof(StorageAnswer));
+			return true;
+		}
+	}
+	return true;
+}
+
 const Event::ECallResult StorageCMDEvent::call(const TEvents events)
 {
 	if (((events & E_HUP) == E_HUP) || ((events & E_ERROR) == E_ERROR)) {
-		removeFromPoll();
-		_interface->result(EStorageResult::ERROR, this);
+		_error();
 		return SKIP;
 	}
 	if (events & E_INPUT)
 	{
 		if (_state == WAIT_ANSWER) {
+			if (!_read())
+				_error();
+			return SKIP;
 		}
 	}
 	if (events & E_OUTPUT) {
 		if (_state == SEND_REQUEST) {
 			if (!_send()) {
-				removeFromPoll();
-				_interface->result(EStorageResult::ERROR, this);
+				_error();
 				return SKIP;
 			}
 		}

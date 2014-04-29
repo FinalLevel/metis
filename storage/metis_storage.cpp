@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 		storage.reset(new Storage(config->dataPath().c_str(), config->minDiskFree(), config->maxSliceSize()));
 		
 		
-		StorageEvent::setInited(storage.get());
+		StorageEvent::setInited(storage.get(), config.get());
 		setSignals();
 		workerGroup->waitThreads();
 	}

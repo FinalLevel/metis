@@ -22,24 +22,34 @@ namespace fl {
 		class StorageEvent : public WorkEvent
 		{
 		public:
-			enum EMetisState : u_int8_t
+			enum EStorageState : u_int8_t
 			{
 				ER_PARSE = 1,
 				ST_WAIT_REQUEST,
+				ST_WAIT_SEND,
 				ST_FINISHED,
 			};
 
 			StorageEvent(const TEventDescriptor descr, const time_t timeOutTime);
 			virtual ~StorageEvent();
 			virtual const ECallResult call(const TEvents events);
-			static void setInited(class Storage *storage);
+			static void setInited(class Storage *storage, class Config *config);
 			static void exitFlush();
 		private:
 			void _endWork();
+			ECallResult _read();
+			ECallResult _send();
+			bool _reset();
+			void _updateTimeout();
+			ECallResult _parseCmd(const StorageCmd &cmd, const char *data);
+			
+			ECallResult _nopCmd();
+			ECallResult _itemInfo(const StorageCmd &cmd, const char *data);
 			static bool _isReady;
 			static class Storage *_storage;
+			static class Config *_config;
 			NetworkBuffer *_networkBuffer;
-			EMetisState _curState;
+			EStorageState _curState;
 		};
 
 		

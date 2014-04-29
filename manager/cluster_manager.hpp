@@ -72,6 +72,10 @@ namespace fl {
 				return _port;
 			}
 			static bool balanceStorage(StorageNode *a, StorageNode *b);
+			bool canPut(const TSize size)
+			{
+				return true;
+			}
 		private:
 			TServerID _id;
 			TStorageGroupID _groupID;

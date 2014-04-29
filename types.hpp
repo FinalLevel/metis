@@ -91,13 +91,26 @@ namespace fl {
 		{
 			STORAGE_NO_CMD = 0,
 			STORAGE_ITEM_INFO,
+			STORAGE_PUT,
 		};
 		
 		struct StorageCmd
 		{
 			EStorageCMD cmd;
 			TSize size;
-		} __attribute__((packed));	;
+		} __attribute__((packed));
+		
+		enum EStorageAnswerStatus : uint8_t
+		{
+			STORAGE_ANSWER_OK = 0,
+			STORAGE_ANSWER_ERROR,
+			STROAGE_ANSWER_NOT_FOUND,
+		};
+		struct StorageAnswer
+		{
+			EStorageAnswerStatus satus;
+			TSize size;
+		} __attribute__((packed));
 	};
 };
 

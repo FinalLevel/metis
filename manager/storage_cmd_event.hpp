@@ -1,6 +1,6 @@
 #pragma once
 #ifndef __FL_MANAGER_STORAGE_CMD_EVENT_HPP
-#define	__FL_MANAGER_STORAGE_CMD_EVENT_HPP
+#define __FL_MANAGER_STORAGE_CMD_EVENT_HPP
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -17,32 +17,87 @@
 #include "cluster_manager.hpp"
 #include "network_buffer.hpp"
 #include "event_thread.hpp"
+#include "file.hpp"
 
 namespace fl {
 	namespace metis {
 		using namespace fl::events;
 		using fl::network::NetworkBuffer;
-		
-		namespace EStorageResult
-		{
-			enum EStorageResult : uint8_t
-			{
-				ERROR,
-			};
-		}
+		using fl::fs::File;
 		
 		class StorageCMDEventInterface
 		{
 		public:
-			virtual bool result(const EStorageResult::EStorageResult res, class StorageCMDEvent *storageEvent) = 0; 
+			virtual void itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
+				const ItemHeader *item)
+			{
+			}
 		};
+		
+		typedef std::vector<class StorageCMDEvent*> TStorageCMDEventVector;
+		
+		class BasicStorageCMD
+		{
+		public:
+			BasicStorageCMD() {}
+			virtual ~BasicStorageCMD() {}
+		protected:
+		};
+		
+		class StorageCMDPut : public BasicStorageCMD
+		{
+		public:
+			StorageCMDPut(class StorageCMDEvent *storageEvent, class StorageCMDEventPool *pool, File *postTmpFile, 
+				BString &putData, const TSize size);
+			virtual ~StorageCMDPut();
+		private:
+			class StorageCMDEvent *_storageEvent;
+			class StorageCMDEventPool *_pool;
+			File *_postTmpFile;
+			BString &_putData;
+			TSize _size;
+		};
+		
+		class StorageCMDItemInfo : public BasicStorageCMD
+		{
+		public:
+			StorageCMDItemInfo(const TStorageCMDEventVector &storageCMDEvents, class StorageCMDEventPool *pool);
+			virtual ~StorageCMDItemInfo();
+			bool addAnswer(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
+	const ItemHeader *item);
+			StorageNode *getPutStorage(const TSize size);
+			StorageCMDEventPool &pool()
+			{
+				return *_pool;
+			}
+		private:
+			class StorageCMDEventPool *_pool;
+			void _clearEvents();
+			bool _isComplete();
+			struct Answer
+			{
+				Answer(StorageCMDEvent *event, StorageNode *storage)
+					: _status(STORAGE_ANSWER_OK), _event(event), _storage(storage)
+				{
+					bzero(&_header, sizeof(_header));
+				}
+				EStorageAnswerStatus _status;
+				ItemHeader _header;
+				StorageCMDEvent *_event;
+				StorageNode *_storage;
+			};
+			typedef std::vector<Answer> TAnswerVector;
+			TAnswerVector _answers;
+		};
+		
 		
 		class StorageCMDEvent : public Event
 		{
 		public:
-			StorageCMDEvent(StorageNode *storage, EPollWorkerThread *thread);
+			StorageCMDEvent(StorageNode *storage, EPollWorkerThread *thread, StorageCMDEventInterface *interface);
 			virtual ~StorageCMDEvent();
-			bool setCMD(const EStorageCMD cmd, StorageCMDEventInterface *interface, ItemHeader &item);
+			bool setCMD(const EStorageCMD cmd, const ItemHeader &item);
+			bool setPutCMD(const ItemHeader &item, File *postTmpFile, BString &putData, const TSize size);
 			virtual const ECallResult call(const TEvents events);
 			EPollWorkerThread *thread()
 			{
@@ -50,16 +105,28 @@ namespace fl {
 			}
 			bool isNormalState()
 			{
-				return _state == WAIT_CONNECTION;
+				return _state == READY;
+			}
+			void setWaitState()
+			{
+				_state = WAIT_CONNECTION;
 			}
 			StorageNode *storage()
 			{
 				return _storage;
 			}
 			bool removeFromPoll();
+			void set(EPollWorkerThread *thread, StorageCMDEventInterface *interface)
+			{
+				_thread = thread;
+				_interface = interface;
+			}
 		private:
 			bool _makeCMD();
 			bool _send();
+			void _error();
+			bool _read();
+			void _cmdReady(const StorageAnswer &sa, const char *data);
 			Socket _socket;
 			EPollWorkerThread *_thread;
 			StorageCMDEventInterface *_interface;
@@ -70,18 +137,27 @@ namespace fl {
 				WAIT_CONNECTION,
 				SEND_REQUEST,
 				WAIT_ANSWER,
+				ERROR,
+				READY,
 			};
 			EState _state;
 			EStorageCMD _cmd;
 		};
 		
-		typedef std::vector<StorageCMDEvent*> TStorageCMDEventVector;
 		class StorageCMDEventPool
 		{
 		public:
 			StorageCMDEventPool(const size_t maxConnectionPerStorage);
-			bool get(const TStorageList &storages, TStorageCMDEventVector &storageEvents, EPollWorkerThread *thread);
+			bool get(const TStorageList &storages, TStorageCMDEventVector &storageEvents, EPollWorkerThread *thread, 
+				StorageCMDEventInterface *interface);
+			StorageCMDEvent *get(StorageNode *storageNode, EPollWorkerThread *thread, StorageCMDEventInterface *interface);
 			void free(StorageCMDEvent *se);
+			
+			StorageCMDItemInfo *mkStorageItemInfo(const TStorageList &storages, EPollWorkerThread *thread, 
+				StorageCMDEventInterface *interface, const ItemHeader &item);
+			
+			StorageCMDPut *mkStorageCMDPut(const ItemHeader &item, StorageNode *storageNode, EPollWorkerThread *thread, 
+				StorageCMDEventInterface *interface, File *postTmpFile, BString &putData, const TSize size);
 			~StorageCMDEventPool();
 		private:
 			size_t _maxConnectionPerStorage;

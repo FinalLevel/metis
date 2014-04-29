@@ -53,6 +53,8 @@ namespace fl {
 			{
 				return _storages;
 			}
+			StorageNode *getPutStorage(const TSize size, Config *config, class ClusterManager &clusterManager, 
+				bool &wasAdded);
 		private:
 			TRangeID _rangeID;
 			TItemKey _rangeIndex;
@@ -100,6 +102,8 @@ namespace fl {
 			bool fillAndAdd(ItemHeader &item, TRangePtr &range, class ClusterManager &clusterManager, bool &wasAdded);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 			bool loadLevel(const TLevel level, const TSubLevel subLevel, Mysql &sql);
+			StorageNode *getPutStorage(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager, 
+				bool &wasAdded);
 		private:
 			bool _loadIndex(Mysql &sql);
 			bool _loadIndexRanges(Mysql &sql, class ClusterManager &clusterManager);

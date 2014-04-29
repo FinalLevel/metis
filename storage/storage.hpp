@@ -23,6 +23,7 @@ namespace fl {
 			Storage(const char *path, const double minFree, const TSize maxSliceSize);
 			bool add(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer);
 			bool remove(const ItemHeader &itemHeader);
+			bool findAndFill(ItemHeader &item);
 		private:
 			SliceManager _sliceManager;
 			Index _index;

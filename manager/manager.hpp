@@ -28,6 +28,7 @@ namespace fl {
 			}
 			bool fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
+			StorageNode *getPutStorage(const TRangeID rangeID, const TSize size);
 		private:
 			class Config *_config;
 			ClusterManager _clusterManager;

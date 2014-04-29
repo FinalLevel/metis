@@ -17,6 +17,7 @@
 #include "types.hpp"
 #include "compatibility.hpp"
 #include "storage_cmd_event.hpp"
+#include "index.hpp"
 
 namespace fl {
 	namespace metis {
@@ -30,16 +31,23 @@ namespace fl {
 			virtual bool parseURI(const char *cmdStart, const EHttpVersion::EHttpVersion version,
 				const std::string &host, const std::string &fileName, const std::string &query);
 			static void setInited(class Manager *manager);
-			virtual bool result(const EStorageResult::EStorageResult res, class StorageCMDEvent *storageEvent);
+			virtual void itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
+				const ItemHeader *item);
 			virtual bool reset(); 
+			void setHttpEvent(HttpEvent *httpEvent)
+			{
+				_httpEvent = httpEvent;
+			}
 		protected:
 			static bool _isReady;
 			static class Manager *_manager;
 			virtual EFormResult _formPut(BString &networkBuffer, class HttpEvent *http) override;
 			virtual bool _mkCOL() override;
+			
+			EFormResult _put(BString &networkBuffer, StorageCMDEventPool &pool);
 			ItemHeader _item;
-			TStorageCMDEventVector _storageCMDEvents;
-			void _clearStorageEvents();
+			BasicStorageCMD *_storageCmd;
+			HttpEvent *_httpEvent;
 		};
 		
 		class ManagerWebDavEventFactory : public WorkEventFactory 

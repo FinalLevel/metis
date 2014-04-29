@@ -49,6 +49,16 @@ void Range::update(Range *src)
 	_managerID = src->_managerID;
 }
 
+StorageNode *Range::getPutStorage(const TSize size, Config *config, class ClusterManager &clusterManager, 	bool &wasAdded)
+{
+	for (auto s = _storages.begin(); s != _storages.end(); s++) {
+		if ((*s)->canPut(size))
+			return s->get();
+	}
+	//TODO: Add new storage
+	return NULL;
+}
+
 namespace EIndexFlds
 {
 	enum EIndexFlds
@@ -287,5 +297,21 @@ bool IndexManager::loadLevel(const TLevel level, const TSubLevel subLevel, Mysql
 	TRangeIndexPtr rangeIndex(new RangeIndex(res.get()));
 	_add(level, subLevel, rangeIndex);
 	return true;
+}
+
+StorageNode *IndexManager::getPutStorage(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager,
+	bool &wasAdded)
+{
+	wasAdded = false;
+	TRangePtr range;
+	AutoMutex autoSync(&_sync);
+	auto f = _ranges.find(rangeID);
+	if (f == _ranges.end()) {
+		log::Fatal::L("Try find put storage for unknown rangeID %u\n", rangeID);
+		return NULL;
+	}
+	range = f->second;
+	autoSync.unLock();
+	return range->getPutStorage(size, _config, clusterManager, wasAdded);
 }
 
