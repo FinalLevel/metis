@@ -71,6 +71,17 @@ bool ManagerWebDavInterface::_mkCOL()
 	return true;
 }
 
+WebDavInterface::EFormResult ManagerWebDavInterface::_formGet(BString &networkBuffer, class HttpEvent *http)
+{
+	_error = ERROR_404_NOT_FOUND;
+	TRangePtr range;
+	if (!_manager->findAndFill(_item, range)) {
+		return EFormResult::RESULT_ERROR;
+	}
+
+	return EFormResult::RESULT_ERROR;
+}
+
 WebDavInterface::EFormResult ManagerWebDavInterface::_formPut(BString &networkBuffer, class HttpEvent *http)
 {
 	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)http->thread()->threadSpecificData();
@@ -123,10 +134,8 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_put(BString &networkBuffer
 		log::Error::L("_formPut: Can't make StorageCMDPut from the pool\n");
 		return EFormResult::RESULT_ERROR;
 	}
-
-	//_storageCmd = new StorageCMDItemInfo
 	
-	return EFormResult::RESULT_ERROR;
+	return EFormResult::RESULT_OK_WAIT;
 }
 
 void ManagerWebDavInterface::itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
@@ -139,6 +148,24 @@ void ManagerWebDavInterface::itemInfo(const EStorageAnswerStatus res, class Stor
 	auto putResult = _put(*_httpEvent->networkBuffer(), static_cast<StorageCMDItemInfo*>(_storageCmd)->pool());
 	if (putResult != EFormResult::RESULT_OK_WAIT)
 		_httpEvent->sendAnswer(putResult);
+}
+
+void ManagerWebDavInterface::itemPut(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent)
+{
+	if ((res == EStorageAnswerStatus::STORAGE_ANSWER_OK) && (static_cast<StorageCMDPut*>(_storageCmd)->size() == 0)) {
+		auto putResult = WebDavInterface::_formPut(*_httpEvent->networkBuffer(), _httpEvent);
+		_httpEvent->sendAnswer(putResult);
+	} else {
+		_error = ERROR_503_SERVICE_UNAVAILABLE;
+		_httpEvent->sendAnswer(EFormResult::RESULT_ERROR);
+	}
+	delete _storageCmd;
+	_storageCmd = NULL;
+}
+
+bool ManagerWebDavInterface::getMorePutData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer)
+{
+	return static_cast<StorageCMDPut*>(_storageCmd)->getMoreData(storageEvent, buffer);
 }
 
 

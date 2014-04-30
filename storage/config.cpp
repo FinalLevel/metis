@@ -69,6 +69,8 @@ Config::Config(int argc, char *argv[])
 		
 		_minDiskFree = _pt.get<decltype(_minDiskFree)>("metis-storage.minDiskFree", minDiskFree);
 		_maxSliceSize = _pt.get<decltype(_maxSliceSize)>("metis-storage.maxSliceSize", DEFAULT_MAX_SLICE_SIZE);
+		
+		_tmpDir = _pt.get<decltype(_tmpDir)>("metis-storage.tmpDir", "/tmp");
 	}
 	catch (ini_parser_error &err)
 	{

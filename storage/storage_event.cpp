@@ -33,6 +33,7 @@ StorageEvent::StorageEvent(const TEventDescriptor descr, const time_t timeOutTim
 	: WorkEvent(descr, timeOutTime), _networkBuffer(NULL), _curState(ST_WAIT_REQUEST)
 {
 	setWaitRead();
+	bzero(&_cmd, sizeof(_cmd));
 }
 
 StorageEvent::~StorageEvent()
@@ -58,6 +59,8 @@ bool StorageEvent::_reset()
 	_curState = ST_WAIT_REQUEST;
 	_networkBuffer->clear();
 	setWaitRead();
+	bzero(&_cmd, sizeof(_cmd));
+	_putTmpFile.close();
 	if (_thread->ctrl(this)) {
 		_updateTimeout();
 		return true;
@@ -75,41 +78,53 @@ StorageEvent::ECallResult StorageEvent::_nopCmd()
 {
 	_networkBuffer->clear();
 	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
-	sa.satus = STORAGE_ANSWER_OK;
+	sa.status = STORAGE_ANSWER_OK;
 	sa.size = 0;
 	return _send();
 }
 
-StorageEvent::ECallResult StorageEvent::_itemInfo(const StorageCmd &cmd, const char *data)
+StorageEvent::ECallResult StorageEvent::_sendStatus(const EStorageAnswerStatus status)
 {
-	if (cmd.size < sizeof(ItemHeader)) {
+	_networkBuffer->clear();
+	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+	sa.status = status;
+	sa.size = 0;
+	return _send();
+}
+
+StorageEvent::ECallResult StorageEvent::_itemInfo(const char *data)
+{
+	if (_cmd.size < sizeof(ItemHeader)) {
 		log::Error::L("StorageEvent::_itemInfo has received cmd.size < sizeof(ItemHeader)\n");
 		return FINISHED;
 	}
 	ItemHeader ih = *(ItemHeader*)data;
 	_networkBuffer->clear();
 	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
-	sa.satus = STROAGE_ANSWER_NOT_FOUND;
+	sa.status = STROAGE_ANSWER_NOT_FOUND;
 	sa.size = 0;
 	
 	if (_storage->findAndFill(ih)) {
-		sa.satus = STORAGE_ANSWER_OK;
+		sa.status = STORAGE_ANSWER_OK;
 		sa.size = sizeof(ih);
 		_networkBuffer->add((char*)&ih, sizeof(ih));
 	}
 	return _send();
 }
 
-StorageEvent::ECallResult StorageEvent::_parseCmd(const StorageCmd &cmd, const char *data)
+StorageEvent::ECallResult StorageEvent::_parseCmd(const char *data)
 {
-	switch (cmd.cmd) 
+	switch (_cmd.cmd) 
 	{
 		case EStorageCMD::STORAGE_ITEM_INFO:
-			return _itemInfo(cmd, data);
+			return _itemInfo(data);
 		case EStorageCMD::STORAGE_NO_CMD:
 			return _nopCmd();
+		case EStorageCMD::STORAGE_PUT: // never come here
+			log::Error::L("Should not come here %u\n", _cmd.cmd);
+		break;
 	};
-	log::Error::L("Unsupported command %u\n", cmd.cmd);
+	log::Error::L("Unsupported command %u\n", _cmd.cmd);
 	_endWork();
 	return FINISHED;
 }
@@ -133,6 +148,48 @@ StorageEvent::ECallResult  StorageEvent::_send()
 	return FINISHED;
 }
 
+StorageEvent::ECallResult StorageEvent::_parsePut()
+{
+	ssize_t writeSize = _networkBuffer->size();
+	size_t skipSize = 0;
+	if (_putTmpFile.descr() == INVALID_SOCKET) {
+		if (_cmd.size < sizeof(ItemHeader)) {
+			log::Error::L("Put cmd can't have size less than %u, but its size is %u\n", sizeof(ItemHeader), _cmd.size);
+			return _sendStatus(EStorageAnswerStatus::STORAGE_ANSWER_ERROR);
+		}
+		_putTmpFile.createUnlinkedTmpFile(_config->getTmpDir());
+		writeSize -= sizeof(StorageCmd);
+		skipSize = sizeof(StorageCmd);
+	}
+	
+	if (_putTmpFile.write(_networkBuffer->c_str() + skipSize, writeSize) != writeSize) {
+		log::Error::L("Can't write to put temporary file in %s\n", _config->getTmpDir());
+		return _sendStatus(EStorageAnswerStatus::STORAGE_ANSWER_ERROR);
+	}
+	if (_putTmpFile.seek(0, SEEK_CUR) >= _cmd.size) {
+		ItemHeader itemHeader;
+		_putTmpFile.seek(0, SEEK_SET);
+		if (_putTmpFile.read(&itemHeader, sizeof(itemHeader)) !=  sizeof(itemHeader)) {
+			log::Error::L("Can't read an item header from put temporary file in %s\n", _config->getTmpDir());
+			return _sendStatus(EStorageAnswerStatus::STORAGE_ANSWER_ERROR);
+		}
+		_cmd.size -= sizeof(itemHeader);
+		if (itemHeader.size != _cmd.size) {
+			log::Error::L("Item and cmd's sizes are different %u != %u\n", itemHeader.size != _cmd.size);
+			return _sendStatus(EStorageAnswerStatus::STORAGE_ANSWER_ERROR);
+		}
+		if (_storage->add(itemHeader, _putTmpFile, *_networkBuffer)) {
+			return _sendStatus(EStorageAnswerStatus::STORAGE_ANSWER_OK);
+		} else {
+			log::Error::L("Can't put a temporary file into the storage\n");
+			return _sendStatus(EStorageAnswerStatus::STORAGE_ANSWER_ERROR);
+		}
+	}
+	_networkBuffer->clear();
+	_updateTimeout();
+	return CHANGE;
+}
+
 StorageEvent::ECallResult StorageEvent::_read()
 {
 	if (!_networkBuffer) {
@@ -149,9 +206,13 @@ StorageEvent::ECallResult StorageEvent::_read()
 	else if (res == NetworkBuffer::IN_PROGRESS)
 		return SKIP;
 	if ((size_t)_networkBuffer->size() > sizeof(StorageCmd)) {
-		StorageCmd &cmd = *(StorageCmd*)_networkBuffer->c_str();
-		if (cmd.size + sizeof(StorageCmd) > (size_t)_networkBuffer->size())
-			return _parseCmd(cmd, _networkBuffer->c_str() + sizeof(StorageCmd));
+		if (!_cmd.size)
+			_cmd = *(StorageCmd*)_networkBuffer->c_str();
+		if (_cmd.cmd  == EStorageCMD::STORAGE_PUT)
+		{
+			return _parsePut();
+		} else if ((_cmd.size + sizeof(StorageCmd)) >= (size_t)_networkBuffer->size())
+			return _parseCmd(_networkBuffer->c_str() + sizeof(StorageCmd));
 	}
 	_updateTimeout();
 	return CHANGE;

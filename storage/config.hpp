@@ -92,6 +92,10 @@ namespace fl {
 			{
 				return _maxSliceSize;
 			}
+			const char *getTmpDir() const
+			{
+				return _tmpDir.c_str();
+			}
 		private:
 			void _usage();
 			void _loadFromDB();
@@ -117,6 +121,8 @@ namespace fl {
 			
 			double _minDiskFree;
 			TSize _maxSliceSize;
+			
+			std::string _tmpDir;
 		};
 	}
 }

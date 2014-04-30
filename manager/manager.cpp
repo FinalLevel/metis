@@ -42,6 +42,13 @@ bool Manager::addLevel(const TLevel level, const TSubLevel subLevel)
 	return true;
 }
 
+bool Manager::findAndFill(ItemHeader &item, TRangePtr &range)
+{
+	if (!_indexManager.findAndFill(item, range))
+		return false;
+	return true;
+}
+
 bool Manager::fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded)
 {
 	wasAdded = false;

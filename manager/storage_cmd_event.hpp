@@ -32,6 +32,13 @@ namespace fl {
 				const ItemHeader *item)
 			{
 			}
+			virtual void itemPut(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent)
+			{
+			}
+			virtual bool getMorePutData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer)
+			{
+				return false;
+			}
 		};
 		
 		typedef std::vector<class StorageCMDEvent*> TStorageCMDEventVector;
@@ -48,13 +55,17 @@ namespace fl {
 		{
 		public:
 			StorageCMDPut(class StorageCMDEvent *storageEvent, class StorageCMDEventPool *pool, File *postTmpFile, 
-				BString &putData, const TSize size);
+				const TSize size);
 			virtual ~StorageCMDPut();
+			bool getMoreData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer);
+			const TSize size() const
+			{
+				return _size;
+			}
 		private:
 			class StorageCMDEvent *_storageEvent;
 			class StorageCMDEventPool *_pool;
 			File *_postTmpFile;
-			BString &_putData;
 			TSize _size;
 		};
 		
@@ -97,7 +108,7 @@ namespace fl {
 			StorageCMDEvent(StorageNode *storage, EPollWorkerThread *thread, StorageCMDEventInterface *interface);
 			virtual ~StorageCMDEvent();
 			bool setCMD(const EStorageCMD cmd, const ItemHeader &item);
-			bool setPutCMD(const ItemHeader &item, File *postTmpFile, BString &putData, const TSize size);
+			bool setPutCMD(const ItemHeader &item, File *postTmpFile, BString &putData, TSize &leftSize);
 			virtual const ECallResult call(const TEvents events);
 			EPollWorkerThread *thread()
 			{

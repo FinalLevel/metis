@@ -164,6 +164,56 @@ bool Slice::_writeItem(const char *data, IndexEntry &ie)
 	return true;
 }
 
+bool Slice::_writeItem(File &putTmpFile, BString &buf, IndexEntry &ie)
+{
+	if (_dataFd.seek(_size, SEEK_SET) != (off_t)_size) {
+		log::Fatal::L("Can't seek slice dataFile %u\n", _sliceID);
+		return false;
+	}
+	const ItemHeader &itemHeader = ie.header;
+	if (_dataFd.write(&itemHeader, sizeof(itemHeader)) != sizeof(itemHeader)) {
+		log::Fatal::L("Can't write header to slice dataFile %u\n", _sliceID);
+		return false;
+	}
+	auto leftSize = ie.header.size;
+	while (leftSize > 0) {
+		TItemSize chunkSize = MAX_BUF_SIZE;
+		if (chunkSize > leftSize)
+			chunkSize = leftSize;
+		buf.clear();
+		if (putTmpFile.read(buf.reserveBuffer(chunkSize), chunkSize) != (ssize_t)chunkSize) {
+			log::Fatal::L("Can't read data from put tmp file %u\n", _sliceID);
+			return false;
+		}
+		if (_dataFd.write(buf.c_str(), buf.size()) != (ssize_t)buf.size()) {
+			log::Fatal::L("Can't write data to slice dataFile %u\n", _sliceID);
+			return false;
+		}
+		leftSize -= chunkSize;
+	}
+	ie.pointer.sliceID = _sliceID;
+	ie.pointer.seek = _size;
+		
+	if (_indexFd.write(&ie, sizeof(ie)) != sizeof(ie))	{
+		log::Fatal::L("Can't write index entry to slice indexFile %u\n", _sliceID);
+		return false;
+	}
+	_size = _dataFd.seek(0, SEEK_CUR);
+	return true;
+}
+
+bool Slice::add(File &putTmpFile, BString &buf, IndexEntry &ie)
+{
+	AutoReadWriteLockWrite autoSyncWrite(&_sync);
+	TSeek curIndexSeek = _indexFd.seek(0, SEEK_CUR);
+	if (!_writeItem(putTmpFile, buf, ie)) {
+		_dataFd.truncate(_size);
+		_indexFd.truncate(curIndexSeek);
+		return false;
+	}
+	return true;
+}
+
 bool Slice::add(const char *data, IndexEntry &ie)
 {
 	AutoReadWriteLockWrite autoSyncWrite(&_sync);
@@ -218,6 +268,22 @@ bool Slice::remove(const ItemHeader &ih, const ItemPointer &pointer)
 		log::Fatal::L("Can't delete the newer item\n", _sliceID, pointer.seek);
 		return false;				
 	}
+}
+
+bool Slice::get(BString &data, const TItemSize dataSeek, const TItemSize requestSeek, const TItemSize requestSize)
+{
+	AutoReadWriteLockRead autoSyncRead(&_sync);
+	TSeek seek = dataSeek + requestSeek + sizeof(ItemHeader);
+	if ((seek +  requestSize) >= _size) {
+		log::Fatal::L("Can't get out of range sliceID %u, seek %u\n", _sliceID, (dataSeek +  requestSeek +  requestSize));
+		return false;
+	}
+	if (_dataFd.pread(data.reserveBuffer(requestSize), requestSize, seek) != requestSize) {
+		log::Fatal::L("Can't read data file from seek sliceID %u, seek %u\n", _sliceID, seek);
+		return false;
+	}
+	return true;
+
 }
 
 bool Slice::get(BString &data, const ItemRequest &item)
@@ -317,22 +383,41 @@ void SliceManager::_init()
 	throw SliceError("Can't initialize sliceManager");
 }
 
-bool SliceManager::add(const char *data, IndexEntry &ie)
+bool SliceManager::findWriteSlice(const TItemSize size)
 {
-	ItemHeader &itemHeader = ie.header;
-	if ((int64_t)itemHeader.size > _leftSpace)
+	if ((int64_t)size > _leftSpace)
 		return false;
-
+	
 	AutoMutex autoSync(&_sync);
 
-	if ((_writeSlice.get() == NULL) || ((_writeSlice->size() + itemHeader.size) > _maxSliceSize))	{
-		if (!_addWriteSlice(itemHeader.size))
+	if ((_writeSlice.get() == NULL) || ((_writeSlice->size() + size) > _maxSliceSize))	{
+		if (!_addWriteSlice(size))
 			return false;
 	}
-	autoSync.unLock();
+	return true;
+}
+
+bool SliceManager::add(File &putTmpFile, BString &buf, IndexEntry &ie)
+{
+	if (!findWriteSlice(ie.header.size))
+		return false;
+	if (_writeSlice->add(putTmpFile, buf, ie))
+	{
+		_leftSpace = __sync_sub_and_fetch(&_leftSpace, ie.header.size);
+		return true;
+	} else {
+		return false;
+	}		
+}
+
+bool SliceManager::add(const char *data, IndexEntry &ie)
+{
+	if (!findWriteSlice(ie.header.size))
+		return false;
+
 	if (_writeSlice->add(data, ie))
 	{
-		_leftSpace = __sync_sub_and_fetch(&_leftSpace, itemHeader.size);
+		_leftSpace = __sync_sub_and_fetch(&_leftSpace, ie.header.size);
 		return true;
 	} else {
 		return false;
@@ -351,6 +436,20 @@ bool SliceManager::remove(const ItemHeader &ih, const ItemPointer &pointer)
 	autoSync.unLock();
 	return slice->remove(ih, pointer);
 	
+}
+
+bool SliceManager::get(BString &data, const ItemPointer &pointer, const TItemSize seek, const TItemSize size)
+{
+	AutoMutex autoSync(&_sync);
+	if (pointer.sliceID >= _slices.size())
+	{
+		log::Error::L("Can't get slice %u\n", pointer.sliceID);
+		return false;
+	}
+	TSlicePtr slice = _slices[pointer.sliceID];
+	autoSync.unLock();
+	return slice->get(data, pointer.seek, seek, size);
+
 }
 
 bool SliceManager::get(BString &data, const ItemRequest &item)

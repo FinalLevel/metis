@@ -13,11 +13,13 @@
 #include "config.hpp"
 #include "util.hpp"
 #include "cluster_manager.hpp"
-
+#include "event_thread.hpp"
+#include "time.hpp"
 
 using namespace fl::metis;
 using namespace fl::utils;
 using fl::db::ESC;
+using fl::chrono::Time;
 
 namespace EIndexRangeFlds
 {
@@ -215,6 +217,26 @@ bool RangeIndex::loadRange(TRangePtr &range, const TItemKey rangeIndex, ClusterM
 	return true;
 }
 
+bool IndexManager::findAndFill(ItemHeader &item, TRangePtr &range)
+{
+	AutoMutex autoSync(&_sync);
+	auto level = _index.find(item.level);
+	if (level == _index.end()) {
+		log::Warning::L("Can't find level %u\n", item.level);
+		return false;
+	}
+	auto subLevel = level->second.find(item.subLevel);
+	if (subLevel == level->second.end()) {
+		log::Warning::L("Can't find level %u / subLevel %u\n", item.level, item.subLevel);
+		return false;
+	}
+	TRangeIndexPtr rangesIndex = subLevel->second;
+	autoSync.unLock();
+	
+	auto rangeIndex = rangesIndex->calcRangeIndex(item.itemKey);
+	return rangesIndex->find(rangeIndex, range);
+}
+
 bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager &clusterManager, bool &wasAdded)
 {
 	AutoMutex autoSync(&_sync);
@@ -255,7 +277,19 @@ bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager
 			return false;
 	}
 	item.rangeID = range->rangeID();
+	item.timeTag = genNewTimeTag();
 	return true;
+}
+
+uint32_t IndexManager::_curOperation  = 0;
+
+ModTimeTag IndexManager::genNewTimeTag()
+{
+	Time curTime;
+	ModTimeTag tag;
+	tag.modTime = curTime.unix();
+	tag.op = __sync_add_and_fetch(&_curOperation, 1);
+	return tag;
 }
 
 bool IndexManager::addLevel(const TLevel levelID, const TSubLevel subLevelID)

@@ -27,6 +27,7 @@ namespace fl {
 				return _indexManager;
 			}
 			bool fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded);
+			bool findAndFill(ItemHeader &item, TRangePtr &range);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 			StorageNode *getPutStorage(const TRangeID rangeID, const TSize size);
 		private:

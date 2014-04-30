@@ -108,7 +108,7 @@ namespace fl {
 		};
 		struct StorageAnswer
 		{
-			EStorageAnswerStatus satus;
+			EStorageAnswerStatus status;
 			TSize size;
 		} __attribute__((packed));
 	};

@@ -31,9 +31,15 @@ namespace fl {
 			virtual bool parseURI(const char *cmdStart, const EHttpVersion::EHttpVersion version,
 				const std::string &host, const std::string &fileName, const std::string &query);
 			static void setInited(class Manager *manager);
+			virtual bool reset(); 
+			
+			// StorageCMDEventInterface
 			virtual void itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
 				const ItemHeader *item);
-			virtual bool reset(); 
+			virtual void itemPut(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent);
+			virtual bool getMorePutData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer);
+			
+		
 			void setHttpEvent(HttpEvent *httpEvent)
 			{
 				_httpEvent = httpEvent;
@@ -42,6 +48,7 @@ namespace fl {
 			static bool _isReady;
 			static class Manager *_manager;
 			virtual EFormResult _formPut(BString &networkBuffer, class HttpEvent *http) override;
+			virtual EFormResult _formGet(BString &networkBuffer, class HttpEvent *http) override;
 			virtual bool _mkCOL() override;
 			
 			EFormResult _put(BString &networkBuffer, StorageCMDEventPool &pool);

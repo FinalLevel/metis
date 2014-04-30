@@ -54,7 +54,9 @@ namespace fl {
 				return _size;
 			}
 			bool add(const char *data, IndexEntry &ie);
+			bool add(File &putTmpFile, BString &buf, IndexEntry &ie);
 			bool get(BString &data, const ItemRequest &item);
+			bool get(BString &data, const TItemSize dataSeek, const TItemSize requestSeek, const TItemSize requestSize);
 			bool loadIndex(class Index &index, Buffer &buf);
 			bool remove(const ItemHeader &ih, const ItemPointer &pointer);
 		private:
@@ -62,6 +64,7 @@ namespace fl {
 			void _openIndexFile(BString &indexFileName);
 			void _rebuildIndexFromData(BString &indexFileName);
 			bool _writeItem(const char *data, IndexEntry &ie);
+			bool _writeItem(File &putTmpFile, BString &buf, IndexEntry &ie);
 			struct SliceDataHeader
 			{
 				static const uint8_t CURRENT_VERSION = 1;
@@ -89,9 +92,12 @@ namespace fl {
 		public:
 			SliceManager(const char *path, const double minFree, const TSize maxSliceSize);
 			bool add(const char *data, IndexEntry &ie);
+			bool add(File &putTmpFile, BString &buf, IndexEntry &ie);
 			bool get(BString &data, const ItemRequest &item);
+			bool get(BString &data, const ItemPointer &pointer, const TItemSize seek, const TItemSize size);
 			bool remove(const ItemHeader &ih, const ItemPointer &pointer);
 			bool loadIndex(class Index &index);
+			bool findWriteSlice(const TItemSize size);
 		private:
 			void _formDataPath(BString &path);
 			void _formIndexPath(BString &path);

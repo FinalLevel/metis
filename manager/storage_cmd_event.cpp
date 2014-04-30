@@ -11,12 +11,13 @@
 #include "storage_cmd_event.hpp"
 #include "network_buffer.hpp"
 #include "metis_log.hpp"
+#include "webdav_interface.hpp"
 
 using namespace fl::metis;
 
 StorageCMDPut::StorageCMDPut(class StorageCMDEvent *storageEvent, class StorageCMDEventPool *pool, File *postTmpFile, 
-	BString &putData, const TSize size)
-	: _storageEvent(storageEvent), _pool(pool), _postTmpFile(postTmpFile), _putData(putData), _size(size)
+	const TSize size)
+	: _storageEvent(storageEvent), _pool(pool), _postTmpFile(postTmpFile),  _size(size)
 {
 }
 
@@ -24,6 +25,23 @@ StorageCMDPut::~StorageCMDPut()
 {
 	if (_storageEvent)
 		_pool->free(_storageEvent);
+}
+
+bool StorageCMDPut::getMoreData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer)
+{
+	if (!_size)
+		return false;
+	buffer.clear();
+	TSize chunkSize = fl::http::WebDavInterface::maxPostInMemmorySize();
+	if (chunkSize > _size) {
+		chunkSize = _size;
+	}
+	if (_postTmpFile->read(buffer.reserveBuffer(chunkSize), chunkSize) != (ssize_t)chunkSize) {
+		log::Error::L("getMoreData: Can't read %u from postTmpFile\n", chunkSize);
+		return false;
+	}
+	_size -= chunkSize;
+	return true;
 }
 
 StorageCMDItemInfo::StorageCMDItemInfo(const TStorageCMDEventVector &storageCMDEvents, StorageCMDEventPool *pool)
@@ -142,11 +160,12 @@ StorageCMDPut *StorageCMDEventPool::mkStorageCMDPut(const ItemHeader &item, Stor
 	StorageCMDEvent *storageEvent = get(storageNode, thread, interface);
 	if (!storageEvent)
 		return NULL;
-	if (!storageEvent->setPutCMD(item, postTmpFile, putData, size)) {
+	TSize leftSize = size;
+	if (!storageEvent->setPutCMD(item, postTmpFile, putData, leftSize)) {
 		delete storageEvent;
 		return NULL;
 	}
-	return new StorageCMDPut(storageEvent, this, postTmpFile, putData, size);
+	return new StorageCMDPut(storageEvent, this, postTmpFile, leftSize);
 }
 
 StorageCMDItemInfo *StorageCMDEventPool::mkStorageItemInfo(const TStorageList &storages, EPollWorkerThread *thread, 
@@ -182,6 +201,33 @@ StorageCMDEvent::~StorageCMDEvent()
 	
 }
 
+bool StorageCMDEvent::setPutCMD(const ItemHeader &item, File *postTmpFile, BString &putData, TSize &leftSize)
+{
+	_cmd = EStorageCMD::STORAGE_PUT;
+	_buffer.clear();
+	StorageCmd &storageCmd = *(StorageCmd*)_buffer.reserveBuffer(sizeof(StorageCmd));
+	storageCmd.cmd = _cmd;
+	storageCmd.size = leftSize + sizeof(item);
+	_buffer.add((char*)&item, sizeof(item));
+	if (postTmpFile) {
+		TSize chunkSize = fl::http::WebDavInterface::maxPostInMemmorySize();
+		if (chunkSize > leftSize) {
+			chunkSize = leftSize;
+		}
+		postTmpFile->seek(0, SEEK_SET);
+		if (postTmpFile->read(_buffer.reserveBuffer(chunkSize), chunkSize) != (ssize_t)chunkSize) {
+			log::Error::L("setPutCMD: Can't read %u from postTmpFile\n", chunkSize);
+			return false;
+		}
+		leftSize -= chunkSize;
+		return true;
+	} else {
+		_buffer << putData;
+		leftSize = 0;
+		return true;
+	}
+}
+
 bool StorageCMDEvent::setCMD(const EStorageCMD cmd, const ItemHeader &item)
 {
 	_cmd = cmd;
@@ -210,10 +256,14 @@ bool StorageCMDEvent::_send()
 		return false;
 	if (sendResult == NetworkBuffer::OK) {
 		_buffer.clear();
-		_state = WAIT_ANSWER;
-		_events = E_INPUT | E_ERROR | E_HUP;
+		if ((_cmd == EStorageCMD::STORAGE_PUT) && (_interface->getMorePutData(this, _buffer))) {
+			setWaitSend();
+		} else {
+			_state = WAIT_ANSWER;
+			setWaitRead();
+		}
 	} else {
-		_events = E_OUTPUT | E_ERROR | E_HUP;
+		setWaitSend();
 	}
 	if (_thread->ctrl(this)) {
 		return true;
@@ -284,6 +334,9 @@ void StorageCMDEvent::_error()
 		case EStorageCMD::STORAGE_ITEM_INFO:
 			_interface->itemInfo(STORAGE_ANSWER_ERROR, this, NULL);
 		break;
+		case EStorageCMD::STORAGE_PUT:
+			_interface->itemPut(STORAGE_ANSWER_ERROR, this);
+		break;
 		case EStorageCMD::STORAGE_NO_CMD:
 		break;
 	};
@@ -294,12 +347,16 @@ void StorageCMDEvent::_cmdReady(const StorageAnswer &sa, const char *data)
 	switch (_cmd)
 	{
 		case EStorageCMD::STORAGE_ITEM_INFO:
-			if (sa.satus == EStorageAnswerStatus::STROAGE_ANSWER_NOT_FOUND) 
-				_interface->itemInfo(sa.satus, this, NULL);
+			if (sa.status == EStorageAnswerStatus::STROAGE_ANSWER_NOT_FOUND) 
+				_interface->itemInfo(sa.status, this, NULL);
 			else if (sa.size >=  sizeof(ItemHeader)) {
 				ItemHeader &ih = *(ItemHeader*)data;
-				_interface->itemInfo(sa.satus, this, &ih);
+				_interface->itemInfo(sa.status, this, &ih);
 			}
+			_state = READY;
+		break;
+		case EStorageCMD::STORAGE_PUT:
+			_interface->itemPut(sa.status, this);
 			_state = READY;
 		break;
 		case EStorageCMD::STORAGE_NO_CMD:
@@ -317,7 +374,7 @@ bool StorageCMDEvent::_read()
 		return true;
 	if ((size_t)_buffer.size() > sizeof(StorageAnswer)) {
 		StorageAnswer &sa = *(StorageAnswer*)_buffer.c_str();
-		if (sa.satus == EStorageAnswerStatus::STORAGE_ANSWER_ERROR) {
+		if (sa.status == EStorageAnswerStatus::STORAGE_ANSWER_ERROR) {
 			log::Warning::L("Manager has received an error status from storage\n");
 			return false;
 		}

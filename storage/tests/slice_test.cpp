@@ -11,6 +11,7 @@
 #include <boost/test/unit_test.hpp>
 #include "test_path.hpp"
 #include "slice.hpp"
+#include "storage.hpp"
 #include "range_index.hpp"
 #include "dir.hpp"
 
@@ -104,6 +105,61 @@ BOOST_AUTO_TEST_CASE (testSliceIndexLoad)
 		BOOST_CHECK(index.find(RANGE_ID, 2, ie) == false);
 		BOOST_CHECK(index.find(RANGE_ID, 1, ie) == true);
 		BOOST_CHECK(ie.timeTag.modTime == MOD_TIME);
+	}
+	catch (...)
+	{
+		BOOST_CHECK_NO_THROW(throw);
+	}
+		
+}
+
+BOOST_AUTO_TEST_CASE (testAddFromFileAndLoad)
+{
+	TestPath testPath("metis_slice");
+	const TItemModTime MOD_TIME = 2;
+	const TRangeID RANGE_ID = 10;
+	File tmpFile;
+	tmpFile.createUnlinkedTmpFile("/tmp");
+	BString data;
+	for (int i = 0; i < 1024; i++)
+		data << (char)('0' + i % 20);
+	BOOST_REQUIRE(tmpFile.write(data.c_str(), data.size()) == (ssize_t)data.size());
+	ItemHeader ih;
+	ih.status = 0;
+	ih.rangeID = RANGE_ID;
+	ih.level = 1;
+	ih.subLevel = 1;
+	ih.itemKey = 1;
+	ih.timeTag.modTime = MOD_TIME;
+	ih.timeTag.op = 2;
+	ih.size = data.size();
+
+	try
+	{
+		Storage storage(testPath.path(), 0.05, 10000);
+		
+		BString buf;
+		tmpFile.seek(0, SEEK_SET);
+		BOOST_REQUIRE(storage.add(ih, tmpFile, buf));
+		ih.itemKey = 2;
+		tmpFile.seek(0, SEEK_SET);
+		BOOST_REQUIRE(storage.add(ih, tmpFile, buf));
+		BOOST_REQUIRE(storage.remove(ih));
+	}
+	catch (...)
+	{
+		BOOST_CHECK_NO_THROW(throw);
+	}
+	
+	
+	try
+	{
+		Storage storage(testPath.path(), 0.05, 10000);
+		BString test;
+		BOOST_REQUIRE(storage.get(ih, 0, ih.size, test) == false);
+		ih.itemKey = 1;
+		BOOST_REQUIRE(storage.get(ih, 0, ih.size, test));
+		BOOST_REQUIRE(test == data);
 	}
 	catch (...)
 	{

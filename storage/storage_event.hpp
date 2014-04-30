@@ -15,10 +15,13 @@
 #include "event_thread.hpp"
 #include "config.hpp"
 #include "network_buffer.hpp"
+#include "file.hpp"
 
 namespace fl {
 	namespace metis {
 		using namespace fl::events;
+		using fl::fs::File;
+		
 		class StorageEvent : public WorkEvent
 		{
 		public:
@@ -39,17 +42,21 @@ namespace fl {
 			void _endWork();
 			ECallResult _read();
 			ECallResult _send();
+			ECallResult _sendStatus(const EStorageAnswerStatus status);
 			bool _reset();
 			void _updateTimeout();
-			ECallResult _parseCmd(const StorageCmd &cmd, const char *data);
+			ECallResult _parseCmd(const char *data);
+			ECallResult _parsePut();
 			
 			ECallResult _nopCmd();
-			ECallResult _itemInfo(const StorageCmd &cmd, const char *data);
+			ECallResult _itemInfo(const char *data);
 			static bool _isReady;
 			static class Storage *_storage;
 			static class Config *_config;
 			NetworkBuffer *_networkBuffer;
 			EStorageState _curState;
+			StorageCmd _cmd;
+			File _putTmpFile;
 		};
 
 		

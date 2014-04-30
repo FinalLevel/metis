@@ -35,6 +35,18 @@ bool Storage::add(const char *data, const ItemHeader &itemHeader, ItemPointer &p
 	return true;
 }
 
+bool Storage::add(const ItemHeader &itemHeader, File &putTmpFile, BString &buf)
+{
+	IndexEntry ie;
+	ie.header = itemHeader;
+	if (!_sliceManager.add(putTmpFile, buf, ie)) {
+		log::Fatal::L("Can't add an object to the slice manager\n");
+		return false;
+	}
+	_index.add(ie);
+	return true;
+}
+
 bool Storage::remove(const ItemHeader &itemHeader)
 {
 	Range::Entry entry;
@@ -58,4 +70,17 @@ bool Storage::findAndFill(ItemHeader &item)
 	item.size = entry.size;
 	item.timeTag = entry.timeTag;
 	return true;
+}
+
+bool Storage::get(const ItemHeader &item, const TItemSize seek, const TItemSize size, BString &data)
+{
+	Range::Entry entry;
+	if (!_index.find(item.rangeID, item.itemKey, entry))
+		return false;	
+	if ((seek + size) > entry.size) {
+		log::Warning::L("Storage::get: Seek %u out of range %u\n", seek + size, entry.size);
+		return false;
+	}
+	return _sliceManager.get(data, entry.pointer, seek, size);
+		
 }

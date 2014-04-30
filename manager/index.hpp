@@ -99,12 +99,15 @@ namespace fl {
 			IndexManager(class Config *config);
 			bool loadAll(Mysql &sql, class ClusterManager &clusterManager);
 			bool parseURL(const std::string &host, const std::string &fileName, ItemHeader &item, TCrc &crc);
+			bool findAndFill(ItemHeader &item, TRangePtr &range);
 			bool fillAndAdd(ItemHeader &item, TRangePtr &range, class ClusterManager &clusterManager, bool &wasAdded);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 			bool loadLevel(const TLevel level, const TSubLevel subLevel, Mysql &sql);
 			StorageNode *getPutStorage(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager, 
 				bool &wasAdded);
+			static ModTimeTag genNewTimeTag();
 		private:
+			static uint32_t _curOperation;
 			bool _loadIndex(Mysql &sql);
 			bool _loadIndexRanges(Mysql &sql, class ClusterManager &clusterManager);
 			void _add(const TLevel level, const TSubLevel sublevel, TRangeIndexPtr &rangeIndex);
