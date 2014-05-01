@@ -52,6 +52,37 @@ StorageCMDItemInfo::StorageCMDItemInfo(const TStorageCMDEventVector &storageCMDE
 	}
 }
 
+bool StorageCMDItemInfo::getStoragesAndFillItem(ItemHeader &item, TStoragePtrList &storageNodes)
+{
+	bool isThereErrorStorages = false;
+	for (auto a = _answers.begin(); a != _answers.end(); a++) {
+		if (a->_status == EStorageAnswerStatus::STORAGE_ANSWER_OK) {
+			if (item.timeTag.tag) {
+				if ((item.timeTag.tag != a->_header.timeTag.tag) || (item.size != a->_header.size)) {
+					log::Warning::L("Time tags or sizes is different choose latest\n");
+					if (item.timeTag.tag < a->_header.timeTag.tag) {
+						item.timeTag.tag = a->_header.timeTag.tag;
+						item.size = a->_header.size;
+						storageNodes.clear();
+					}
+					else
+						continue;
+				}
+			} else {
+				item.timeTag.tag = a->_header.timeTag.tag;
+				item.size = a->_header.size;
+			}
+			storageNodes.push_back(a->_storage);
+		} else if (a->_status != EStorageAnswerStatus::STROAGE_ANSWER_NOT_FOUND) {
+			isThereErrorStorages = true;
+		}
+	}
+	if (isThereErrorStorages)
+		return ! storageNodes.empty();
+	else
+		return true;
+}
+
 StorageNode *StorageCMDItemInfo::getPutStorage(const TSize size)
 {
 	for (auto a = _answers.begin(); a != _answers.end(); a++) {
@@ -117,7 +148,7 @@ StorageCMDEventPool::StorageCMDEventPool(const size_t maxConnectionPerStorage)
 
 void StorageCMDEventPool::free(StorageCMDEvent *se)
 {
-	if (se->isNormalState()) {
+	if (se->isCompletedState()) {
 		static TStorageCMDEventVector emptyVector;
 		auto res = _freeEvents.insert(TStorageCMDEventMap::value_type(se->storage()->id(), emptyVector));
 		if (res.first->second.size() < _maxConnectionPerStorage) {
@@ -127,7 +158,7 @@ void StorageCMDEventPool::free(StorageCMDEvent *se)
 			}
 		}	
 	}
-	delete se;
+	se->addToDelete();
 }
 
 StorageCMDEvent *StorageCMDEventPool::get(StorageNode *storageNode, EPollWorkerThread *thread, 
@@ -152,6 +183,12 @@ bool StorageCMDEventPool::get(const TStorageList &storages, TStorageCMDEventVect
 		storageEvents.push_back(get(s->get(), thread, interface));
 	}
 	return true;
+}
+
+StorageCMDGet *StorageCMDEventPool::mkStorageCMDGet(const ItemHeader &item, StorageNode *storageNode, 
+	EPollWorkerThread *thread, StorageCMDEventInterface *interface, BString &networkBuffer)
+{
+	return NULL;
 }
 
 StorageCMDPut *StorageCMDEventPool::mkStorageCMDPut(const ItemHeader &item, StorageNode *storageNode, 
@@ -311,6 +348,11 @@ bool StorageCMDEvent::_makeCMD()
 	return false;
 }
 
+void StorageCMDEvent::addToDelete()
+{
+	_state = COMPLETED;
+	_thread->addToDeletedNL(this);
+}
 bool StorageCMDEvent::removeFromPoll()
 {
 	if (_op == EPOLL_CTL_ADD)
@@ -344,6 +386,8 @@ void StorageCMDEvent::_error()
 
 void StorageCMDEvent::_cmdReady(const StorageAnswer &sa, const char *data)
 {
+	removeFromPoll();
+	_state = COMPLETED;
 	switch (_cmd)
 	{
 		case EStorageCMD::STORAGE_ITEM_INFO:
@@ -353,11 +397,9 @@ void StorageCMDEvent::_cmdReady(const StorageAnswer &sa, const char *data)
 				ItemHeader &ih = *(ItemHeader*)data;
 				_interface->itemInfo(sa.status, this, &ih);
 			}
-			_state = READY;
 		break;
 		case EStorageCMD::STORAGE_PUT:
 			_interface->itemPut(sa.status, this);
-			_state = READY;
 		break;
 		case EStorageCMD::STORAGE_NO_CMD:
 		break;
@@ -388,6 +430,9 @@ bool StorageCMDEvent::_read()
 
 const Event::ECallResult StorageCMDEvent::call(const TEvents events)
 {
+	if (_state == COMPLETED)
+		return SKIP;
+	
 	if (((events & E_HUP) == E_HUP) || ((events & E_ERROR) == E_ERROR)) {
 		_error();
 		return SKIP;
@@ -401,7 +446,11 @@ const Event::ECallResult StorageCMDEvent::call(const TEvents events)
 		}
 	}
 	if (events & E_OUTPUT) {
-		if (_state == SEND_REQUEST) {
+		if (_state == WAIT_CONNECTION) {
+			if (!_makeCMD())
+				_error();
+			return SKIP;
+		} if (_state == SEND_REQUEST) {
 			if (!_send()) {
 				_error();
 				return SKIP;

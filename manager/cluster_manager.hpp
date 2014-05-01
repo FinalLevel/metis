@@ -88,6 +88,7 @@ namespace fl {
 		
 		typedef std::vector<TServerID> TServerIDList;
 		typedef std::vector<TStorageNodePtr> TStorageList;
+		typedef std::vector<StorageNode*> TStoragePtrList;
 		
 		class ClusterManager
 		{

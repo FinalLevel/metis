@@ -18,12 +18,13 @@
 #include "compatibility.hpp"
 #include "storage_cmd_event.hpp"
 #include "index.hpp"
+#include "timer_event.hpp"
 
 namespace fl {
 	namespace metis {
 		using fl::http::WebDavInterface;
 		
-		class ManagerWebDavInterface : public WebDavInterface, StorageCMDEventInterface
+		class ManagerWebDavInterface : public WebDavInterface, StorageCMDEventInterface, TimerEventInterface
 		{
 		public:
 			ManagerWebDavInterface();
@@ -39,7 +40,9 @@ namespace fl {
 			virtual void itemPut(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent);
 			virtual bool getMorePutData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer);
 			
-		
+			// TimerEventInterface
+			virtual void timerCall(class TimerEvent *te) override;
+			
 			void setHttpEvent(HttpEvent *httpEvent)
 			{
 				_httpEvent = httpEvent;
@@ -52,7 +55,10 @@ namespace fl {
 			virtual bool _mkCOL() override;
 			
 			EFormResult _put(BString &networkBuffer, StorageCMDEventPool &pool);
+			EFormResult _get(TStoragePtrList &storageNodes, BString &networkBuffer, StorageCMDEventPool &pool);
+			EFormResult _gotItemInfo();
 			ItemHeader _item;
+			TimerEvent _timerEvent;
 			BasicStorageCMD *_storageCmd;
 			HttpEvent *_httpEvent;
 		};

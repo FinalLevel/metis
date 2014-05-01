@@ -51,6 +51,18 @@ namespace fl {
 		protected:
 		};
 		
+		class StorageCMDGet : public BasicStorageCMD
+		{
+		public:
+			StorageCMDGet(class StorageCMDEvent *storageEvent, const TItemSize size, class StorageCMDEventPool *pool);
+			virtual ~StorageCMDGet();
+		private:
+			class StorageCMDEvent *_storageEvent;
+			class StorageCMDEventPool *_pool;
+			TItemSize _leftSize;
+			TItemSize _curSeek;
+		};
+		
 		class StorageCMDPut : public BasicStorageCMD
 		{
 		public:
@@ -81,6 +93,7 @@ namespace fl {
 			{
 				return *_pool;
 			}
+			bool getStoragesAndFillItem(ItemHeader &item, TStoragePtrList &storageNodes);
 		private:
 			class StorageCMDEventPool *_pool;
 			void _clearEvents();
@@ -106,7 +119,6 @@ namespace fl {
 		{
 		public:
 			StorageCMDEvent(StorageNode *storage, EPollWorkerThread *thread, StorageCMDEventInterface *interface);
-			virtual ~StorageCMDEvent();
 			bool setCMD(const EStorageCMD cmd, const ItemHeader &item);
 			bool setPutCMD(const ItemHeader &item, File *postTmpFile, BString &putData, TSize &leftSize);
 			virtual const ECallResult call(const TEvents events);
@@ -114,9 +126,9 @@ namespace fl {
 			{
 				return _thread;
 			}
-			bool isNormalState()
+			bool isCompletedState()
 			{
-				return _state == READY;
+				return _state == COMPLETED;
 			}
 			void setWaitState()
 			{
@@ -132,7 +144,11 @@ namespace fl {
 				_thread = thread;
 				_interface = interface;
 			}
+			void addToDelete();
 		private:
+			friend class EPollWorkerThread;
+			friend class StorageCMDEventPool;
+			virtual ~StorageCMDEvent();
 			bool _makeCMD();
 			bool _send();
 			void _error();
@@ -149,7 +165,7 @@ namespace fl {
 				SEND_REQUEST,
 				WAIT_ANSWER,
 				ERROR,
-				READY,
+				COMPLETED,
 			};
 			EState _state;
 			EStorageCMD _cmd;
@@ -169,6 +185,9 @@ namespace fl {
 			
 			StorageCMDPut *mkStorageCMDPut(const ItemHeader &item, StorageNode *storageNode, EPollWorkerThread *thread, 
 				StorageCMDEventInterface *interface, File *postTmpFile, BString &putData, const TSize size);
+			
+			StorageCMDGet *mkStorageCMDGet(const ItemHeader &item, StorageNode *storageNode, EPollWorkerThread *thread, 
+				StorageCMDEventInterface *interface, BString &networkBuffer);
 			~StorageCMDEventPool();
 		private:
 			size_t _maxConnectionPerStorage;
