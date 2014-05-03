@@ -15,6 +15,18 @@
 
 using namespace fl::metis;
 
+StorageCMDGet::StorageCMDGet(StorageCMDEvent* storageEvent, StorageCMDEventPool* pool, 
+	const GetItemChunkRequest &getRequest, const TItemSize lastSize)
+	: _storageEvent(storageEvent), _pool(pool), _getRequest(getRequest), _lastSize(lastSize)
+{
+}
+
+StorageCMDGet::~StorageCMDGet()
+{
+	if (_storageEvent)
+		_pool->free(_storageEvent);	
+}
+
 StorageCMDPut::StorageCMDPut(class StorageCMDEvent *storageEvent, class StorageCMDEventPool *pool, File *postTmpFile, 
 	const TSize size)
 	: _storageEvent(storageEvent), _pool(pool), _postTmpFile(postTmpFile),  _size(size)
@@ -73,7 +85,7 @@ bool StorageCMDItemInfo::getStoragesAndFillItem(ItemHeader &item, TStoragePtrLis
 				item.size = a->_header.size;
 			}
 			storageNodes.push_back(a->_storage);
-		} else if (a->_status != EStorageAnswerStatus::STROAGE_ANSWER_NOT_FOUND) {
+		} else if (a->_status != EStorageAnswerStatus::STORAGE_ANSWER_NOT_FOUND) {
 			isThereErrorStorages = true;
 		}
 	}
@@ -186,9 +198,25 @@ bool StorageCMDEventPool::get(const TStorageList &storages, TStorageCMDEventVect
 }
 
 StorageCMDGet *StorageCMDEventPool::mkStorageCMDGet(const ItemHeader &item, StorageNode *storageNode, 
-	EPollWorkerThread *thread, StorageCMDEventInterface *interface, BString &networkBuffer)
+	EPollWorkerThread *thread, StorageCMDEventInterface *interface, const TItemSize chunkSize)
 {
-	return NULL;
+	StorageCMDEvent *storageEvent = get(storageNode, thread, interface);
+	if (!storageEvent)
+		return NULL;
+
+	GetItemChunkRequest getRequest;
+	getRequest.rangeID = item.rangeID;
+	getRequest.itemKey = item.itemKey;
+	getRequest.chunkSize = chunkSize;
+	getRequest.seek = 0;
+	if (getRequest.chunkSize > item.size)
+		getRequest.chunkSize = item.size;
+	
+	if (storageEvent->setGetCMD(getRequest)) {
+		delete storageEvent;
+		return NULL;
+	}
+	return new StorageCMDGet(storageEvent, this, getRequest, item.size - getRequest.chunkSize);
 }
 
 StorageCMDPut *StorageCMDEventPool::mkStorageCMDPut(const ItemHeader &item, StorageNode *storageNode, 
@@ -238,6 +266,17 @@ StorageCMDEvent::~StorageCMDEvent()
 	
 }
 
+bool StorageCMDEvent::setGetCMD(const GetItemChunkRequest &getRequest)
+{
+	_cmd = EStorageCMD::STORAGE_GET_ITEM_CHUNK;
+	_buffer.clear();
+	StorageCmd &storageCmd = *(StorageCmd*)_buffer.reserveBuffer(sizeof(StorageCmd));
+	storageCmd.cmd = _cmd;
+	storageCmd.size = sizeof(getRequest);
+	_buffer.add((char*)&getRequest, sizeof(getRequest));
+	return _makeCMD();
+}
+
 bool StorageCMDEvent::setPutCMD(const ItemHeader &item, File *postTmpFile, BString &putData, TSize &leftSize)
 {
 	_cmd = EStorageCMD::STORAGE_PUT;
@@ -257,11 +296,11 @@ bool StorageCMDEvent::setPutCMD(const ItemHeader &item, File *postTmpFile, BStri
 			return false;
 		}
 		leftSize -= chunkSize;
-		return true;
+		return _makeCMD();;
 	} else {
 		_buffer << putData;
 		leftSize = 0;
-		return true;
+		return _makeCMD();;
 	}
 }
 
@@ -373,6 +412,9 @@ void StorageCMDEvent::_error()
 	removeFromPoll();
 	switch (_cmd)
 	{
+		case EStorageCMD::STORAGE_GET_ITEM_CHUNK:
+			_interface->itemGet(STORAGE_ANSWER_ERROR, this);
+		break;
 		case EStorageCMD::STORAGE_ITEM_INFO:
 			_interface->itemInfo(STORAGE_ANSWER_ERROR, this, NULL);
 		break;
@@ -390,8 +432,11 @@ void StorageCMDEvent::_cmdReady(const StorageAnswer &sa, const char *data)
 	_state = COMPLETED;
 	switch (_cmd)
 	{
+		case EStorageCMD::STORAGE_GET_ITEM_CHUNK:
+			_interface->itemGet(sa.status, this);
+		break;
 		case EStorageCMD::STORAGE_ITEM_INFO:
-			if (sa.status == EStorageAnswerStatus::STROAGE_ANSWER_NOT_FOUND) 
+			if (sa.status == EStorageAnswerStatus::STORAGE_ANSWER_NOT_FOUND) 
 				_interface->itemInfo(sa.status, this, NULL);
 			else if (sa.size >=  sizeof(ItemHeader)) {
 				ItemHeader &ih = *(ItemHeader*)data;

@@ -92,6 +92,7 @@ namespace fl {
 			STORAGE_NO_CMD = 0,
 			STORAGE_ITEM_INFO,
 			STORAGE_PUT,
+			STORAGE_GET_ITEM_CHUNK,
 		};
 		
 		struct StorageCmd
@@ -104,13 +105,21 @@ namespace fl {
 		{
 			STORAGE_ANSWER_OK = 0,
 			STORAGE_ANSWER_ERROR,
-			STROAGE_ANSWER_NOT_FOUND,
+			STORAGE_ANSWER_NOT_FOUND,
 		};
 		struct StorageAnswer
 		{
 			EStorageAnswerStatus status;
 			TSize size;
 		} __attribute__((packed));
+		
+		struct GetItemChunkRequest
+		{
+			TRangeID rangeID;
+			TItemKey itemKey;
+			TItemSize chunkSize;
+			TItemSize seek;
+		};
 	};
 };
 

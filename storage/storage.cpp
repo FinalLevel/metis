@@ -72,15 +72,14 @@ bool Storage::findAndFill(ItemHeader &item)
 	return true;
 }
 
-bool Storage::get(const ItemHeader &item, const TItemSize seek, const TItemSize size, BString &data)
+bool Storage::get(const GetItemChunkRequest &itemRequest, BString &data)
 {
 	Range::Entry entry;
-	if (!_index.find(item.rangeID, item.itemKey, entry))
+	if (!_index.find(itemRequest.rangeID, itemRequest.itemKey, entry))
 		return false;	
-	if ((seek + size) > entry.size) {
-		log::Warning::L("Storage::get: Seek %u out of range %u\n", seek + size, entry.size);
+	if ((itemRequest.seek + itemRequest.chunkSize) > entry.size) {
+		log::Warning::L("Storage::get: Seek %u out of range %u\n", itemRequest.seek + itemRequest.chunkSize, entry.size);
 		return false;
 	}
-	return _sliceManager.get(data, entry.pointer, seek, size);
-		
+	return _sliceManager.get(data, entry.pointer, itemRequest.seek, itemRequest.chunkSize);
 }

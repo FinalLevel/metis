@@ -106,7 +106,7 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_get(TStoragePtrList &stora
 	HttpAnswer answer(networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
 	answer.setContentLength(_item.size);
 	for (auto storage = storageNodes.begin(); storage != storageNodes.end(); storage++) {
-		_storageCmd = pool.mkStorageCMDGet(_item, *storage, _httpEvent->thread(), this, networkBuffer);
+		_storageCmd = pool.mkStorageCMDGet(_item, *storage, _httpEvent->thread(), this, maxPostInMemmorySize());
 		if (_storageCmd)
 			return EFormResult::RESULT_OK_WAIT;
 	}

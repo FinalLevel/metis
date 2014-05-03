@@ -50,6 +50,7 @@ namespace fl {
 			
 			ECallResult _nopCmd();
 			ECallResult _itemInfo(const char *data);
+			ECallResult _itemGetChunk(const char *data);
 			static bool _isReady;
 			static class Storage *_storage;
 			static class Config *_config;

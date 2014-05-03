@@ -92,6 +92,29 @@ StorageEvent::ECallResult StorageEvent::_sendStatus(const EStorageAnswerStatus s
 	return _send();
 }
 
+
+StorageEvent::ECallResult StorageEvent::_itemGetChunk(const char *data)
+{
+	if (_cmd.size < sizeof(GetItemChunkRequest)) {
+		log::Error::L("StorageEvent::_itemInfo has received cmd.size < sizeof(ItemHeader)\n");
+		return FINISHED;
+	}
+	GetItemChunkRequest itemRequest = *(GetItemChunkRequest*)data;
+	_networkBuffer->clear();
+	_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+	if (_storage->get(itemRequest, *_networkBuffer)) {
+		StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->c_str();
+		sa.status = STORAGE_ANSWER_OK;
+		sa.size = _networkBuffer->size() - sizeof(StorageAnswer);
+	} else {
+		_networkBuffer->clear();
+		StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+		sa.status = STORAGE_ANSWER_NOT_FOUND;
+		sa.size = 0;
+	}
+	return _send();
+}
+
 StorageEvent::ECallResult StorageEvent::_itemInfo(const char *data)
 {
 	if (_cmd.size < sizeof(ItemHeader)) {
@@ -101,7 +124,7 @@ StorageEvent::ECallResult StorageEvent::_itemInfo(const char *data)
 	ItemHeader ih = *(ItemHeader*)data;
 	_networkBuffer->clear();
 	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
-	sa.status = STROAGE_ANSWER_NOT_FOUND;
+	sa.status = STORAGE_ANSWER_NOT_FOUND;
 	sa.size = 0;
 	
 	if (_storage->findAndFill(ih)) {
@@ -116,6 +139,8 @@ StorageEvent::ECallResult StorageEvent::_parseCmd(const char *data)
 {
 	switch (_cmd.cmd) 
 	{
+		case EStorageCMD::STORAGE_GET_ITEM_CHUNK:
+			return _itemGetChunk(data);
 		case EStorageCMD::STORAGE_ITEM_INFO:
 			return _itemInfo(data);
 		case EStorageCMD::STORAGE_NO_CMD:

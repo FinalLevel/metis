@@ -156,9 +156,14 @@ BOOST_AUTO_TEST_CASE (testAddFromFileAndLoad)
 	{
 		Storage storage(testPath.path(), 0.05, 10000);
 		BString test;
-		BOOST_REQUIRE(storage.get(ih, 0, ih.size, test) == false);
-		ih.itemKey = 1;
-		BOOST_REQUIRE(storage.get(ih, 0, ih.size, test));
+		GetItemChunkRequest getItem;
+		getItem.rangeID = ih.rangeID;
+		getItem.itemKey = ih.itemKey;
+		getItem.seek = 0;
+		getItem.chunkSize = ih.size;
+		BOOST_REQUIRE(storage.get(getItem, test) == false);
+		getItem.itemKey = 1;
+		BOOST_REQUIRE(storage.get(getItem, test));
 		BOOST_REQUIRE(test == data);
 	}
 	catch (...)

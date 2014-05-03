@@ -25,7 +25,7 @@ namespace fl {
 			bool add(const ItemHeader &itemHeader, File &putTmpFile, BString &buf);
 			bool remove(const ItemHeader &itemHeader);
 			bool findAndFill(ItemHeader &item);
-			bool get(const ItemHeader &item, const TItemSize seek, const TItemSize size, BString &data);
+			bool get(const GetItemChunkRequest &itemRequest, BString &data);
 		private:
 			SliceManager _sliceManager;
 			Index _index;
