@@ -97,6 +97,7 @@ namespace fl {
 			bool findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs);
 			TServerID findFreeManager();
 			void findStorages(TServerIDList &storageIds, TStorageList &storages);
+			void pingStorages();
 		private:
 			bool _loadManagers(Mysql &sql);
 			bool _loadStorages(Mysql &sql);

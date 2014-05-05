@@ -47,7 +47,29 @@ BOOST_AUTO_TEST_CASE (testLevelRangeCreation)
 		BOOST_REQUIRE(range->rangeIndex() == 15);
 		BOOST_REQUIRE(wasAdded);
 		
+		item.rangeID = 0;
+		BOOST_REQUIRE(manager.findAndFill(item, range));
+		BOOST_REQUIRE(item.rangeID == range->rangeID());
+		
 		Manager manager2(config.config());
+	} catch (...) {
+		BOOST_CHECK_NO_THROW(throw);
+	}
+}
+
+BOOST_AUTO_TEST_CASE (testParseURLToItem)
+{
+	try
+	{
+		TestConfig config;
+		Manager manager(config.config());
+		BOOST_REQUIRE(manager.loadAll());
+
+		ItemHeader item;
+		TCrc urlCrc;
+		BOOST_CHECK(manager.index().parseURL("", "/1/2/", item, urlCrc));
+		BOOST_CHECK((item.level == 1) && (item.subLevel == 2));
+		
 	} catch (...) {
 		BOOST_CHECK_NO_THROW(throw);
 	}

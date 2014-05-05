@@ -35,7 +35,7 @@ namespace fl {
 			virtual void itemPut(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent)
 			{
 			}
-			virtual void itemGet(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent)
+			virtual void itemChunkGet(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent)
 			{
 			}
 			virtual bool getMorePutData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer)
@@ -57,14 +57,21 @@ namespace fl {
 		class StorageCMDGet : public BasicStorageCMD
 		{
 		public:
-			StorageCMDGet(class StorageCMDEvent *storageEvent, class StorageCMDEventPool *pool, 
+			StorageCMDGet(class StorageCMDEvent *storageEvent, class StorageCMDEventPool *pool, StorageNode *storageNode,
 				const GetItemChunkRequest &getRequest, const TItemSize lastSize);
 			virtual ~StorageCMDGet();
+			bool isSended() 
+			{
+				return (_getRequest.seek != 0);
+			}
+			bool canFinish();
+			bool getNextChunk(EPollWorkerThread *thread, StorageCMDEventInterface *interface);
 		private:
 			class StorageCMDEvent *_storageEvent;
 			class StorageCMDEventPool *_pool;
+			StorageNode *_storageNode;
 			GetItemChunkRequest _getRequest;
-			TItemSize _lastSize;
+			TItemSize _remainingSize;
 		};
 		
 		class StorageCMDPut : public BasicStorageCMD
@@ -78,6 +85,7 @@ namespace fl {
 			{
 				return _size;
 			}
+			bool makeCMD();
 		private:
 			class StorageCMDEvent *_storageEvent;
 			class StorageCMDEventPool *_pool;
@@ -126,6 +134,8 @@ namespace fl {
 			bool setCMD(const EStorageCMD cmd, const ItemHeader &item);
 			bool setPutCMD(const ItemHeader &item, File *postTmpFile, BString &putData, TSize &leftSize);
 			bool setGetCMD(const GetItemChunkRequest &getRequest);
+			void addItemData(BString &answer);
+			void moveItemData(NetworkBuffer &networkBuffer);
 			virtual const ECallResult call(const TEvents events);
 			EPollWorkerThread *thread()
 			{
@@ -150,11 +160,11 @@ namespace fl {
 				_interface = interface;
 			}
 			void addToDelete();
+			bool makeCMD();
 		private:
 			friend class EPollWorkerThread;
 			friend class StorageCMDEventPool;
 			virtual ~StorageCMDEvent();
-			bool _makeCMD();
 			bool _send();
 			void _error();
 			bool _read();
@@ -189,7 +199,7 @@ namespace fl {
 				StorageCMDEventInterface *interface, const ItemHeader &item);
 			
 			StorageCMDPut *mkStorageCMDPut(const ItemHeader &item, StorageNode *storageNode, EPollWorkerThread *thread, 
-				StorageCMDEventInterface *interface, File *postTmpFile, BString &putData, const TSize size);
+				StorageCMDEventInterface *interface, File *postTmpFile, BString &putData);
 			
 			StorageCMDGet *mkStorageCMDGet(const ItemHeader &item, StorageNode *storageNode, EPollWorkerThread *thread, 
 				StorageCMDEventInterface *interface, const TItemSize chunkSize);

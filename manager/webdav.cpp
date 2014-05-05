@@ -101,10 +101,6 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_formGet(BString &networkBu
 WebDavInterface::EFormResult ManagerWebDavInterface::_get(TStoragePtrList &storageNodes, BString &networkBuffer, 
 	StorageCMDEventPool &pool)
 {
-	// TODO: write a content type parser from the extension
-	const char *contentType = "image/jpeg";
-	HttpAnswer answer(networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
-	answer.setContentLength(_item.size);
 	for (auto storage = storageNodes.begin(); storage != storageNodes.end(); storage++) {
 		_storageCmd = pool.mkStorageCMDGet(_item, *storage, _httpEvent->thread(), this, maxPostInMemmorySize());
 		if (_storageCmd)
@@ -115,6 +111,8 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_get(TStoragePtrList &stora
 
 WebDavInterface::EFormResult ManagerWebDavInterface::_gotItemInfo()
 {
+	_timerEvent.stop();
+	
 	TStoragePtrList storageNodes;
 	if (!static_cast<StorageCMDItemInfo*>(_storageCmd)->getStoragesAndFillItem(_item, storageNodes)) {
 		log::Error::L("Can't get item info\n");
@@ -154,36 +152,89 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_formPut(BString &networkBu
 
 WebDavInterface::EFormResult ManagerWebDavInterface::_put(BString &networkBuffer, StorageCMDEventPool &pool)
 {
-	TSize size = _putData.size();
+	_item.size = _putData.size();
 	if (_status & ST_POST_SPLITED) {
-		size = _postTmpFile.fileSize();
+		_item.size = _postTmpFile.fileSize();
 	}
-
+	
 	StorageNode *storageNode = NULL;
 	if (_storageCmd) {
-		storageNode = static_cast<StorageCMDItemInfo*>(_storageCmd)->getPutStorage(size);
+		storageNode = static_cast<StorageCMDItemInfo*>(_storageCmd)->getPutStorage(_item.size);
 		delete _storageCmd;
 		_storageCmd = NULL;
 	}
 
 	if (!storageNode) {
-		storageNode = _manager->getPutStorage(_item.rangeID, size);
+		storageNode = _manager->getPutStorage(_item.rangeID, _item.size);
 		if (!storageNode) {
-			log::Error::L("Put: Can't find storage to fit %u\n", size);
+			log::Error::L("Put: Can't find storage to fit %u\n", _item.size);
 			_error = ERROR_507_INSUFFICIENT_STORAGE;
 			return EFormResult::RESULT_ERROR;
 		}	
 	}
 	
 	_storageCmd = pool.mkStorageCMDPut(_item, storageNode, _httpEvent->thread(), this, 
-			(_status & ST_POST_SPLITED) ?	&_postTmpFile : NULL, _putData, size);
+			(_status & ST_POST_SPLITED) ?	&_postTmpFile : NULL, _putData);
 	if (!_storageCmd) {
 		_error = ERROR_503_SERVICE_UNAVAILABLE;
 		log::Error::L("_formPut: Can't make StorageCMDPut from the pool\n");
 		return EFormResult::RESULT_ERROR;
 	}
-	
+	if (!static_cast<StorageCMDPut*>(_storageCmd)->makeCMD()) {
+		_error = ERROR_503_SERVICE_UNAVAILABLE;
+		log::Error::L("_formPut: Can't run storage put cmd\n");
+		return EFormResult::RESULT_ERROR;
+	}
 	return EFormResult::RESULT_OK_WAIT;
+}
+
+ManagerWebDavInterface::EFormResult ManagerWebDavInterface::getMoreDataToSend(BString &networkBuffer, 
+	class HttpEvent *http) override
+{
+	StorageCMDGet *getCMD = static_cast<StorageCMDGet*>(_storageCmd);
+	if (!getCMD) {
+		log::Error::L("Receive NULL _storageCmd in getMoreDataToSend\n");
+		return EFormResult::RESULT_FINISH;
+	}
+	if (getCMD->getNextChunk(http->thread(), this))
+		return EFormResult::RESULT_OK_WAIT;
+	else
+		return EFormResult::RESULT_FINISH;
+}
+
+void ManagerWebDavInterface::itemChunkGet(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent)
+{
+	StorageCMDGet *getCMD = static_cast<StorageCMDGet*>(_storageCmd);
+	bool isSended = getCMD->isSended();
+	if (res == EStorageAnswerStatus::STORAGE_ANSWER_OK) {
+		auto networkBuffer = _httpEvent->networkBuffer();
+		networkBuffer->clear();
+		if (isSended) {
+			storageEvent->moveItemData(*networkBuffer);
+		} else {
+			auto contentType = MimeType::getMimeTypeStrFromFileName(_fileName);
+			HttpAnswer answer(*networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
+			answer.setContentLength(_item.size);
+			storageEvent->addItemData(*networkBuffer);
+		}
+		if (getCMD->canFinish()) {
+			delete _storageCmd;
+			_storageCmd = NULL;
+			_httpEvent->sendAnswer(_keepAliveState()); 
+		} else {
+			_httpEvent->sendAnswer(EFormResult::RESULT_OK_PARTIAL_SEND);
+		}
+		return;
+	} 
+	if (isSended) { // if data was sent then close connection
+		_httpEvent->sendAnswer(EFormResult::RESULT_FINISH);
+		return;
+	}
+		
+	if (res == EStorageAnswerStatus::STORAGE_ANSWER_NOT_FOUND) {
+		_error = ERROR_404_NOT_FOUND; 
+	}
+	_httpEvent->sendAnswer(EFormResult::RESULT_ERROR);
 }
 
 void ManagerWebDavInterface::itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
@@ -209,6 +260,7 @@ void ManagerWebDavInterface::itemPut(const EStorageAnswerStatus res, class Stora
 		auto putResult = WebDavInterface::_formPut(*_httpEvent->networkBuffer(), _httpEvent);
 		_httpEvent->sendAnswer(putResult);
 	} else {
+		log::Error::L("itemPut has received an error from the storage\n");
 		_error = ERROR_503_SERVICE_UNAVAILABLE;
 		_httpEvent->sendAnswer(EFormResult::RESULT_ERROR);
 	}

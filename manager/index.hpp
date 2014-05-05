@@ -82,7 +82,8 @@ namespace fl {
 			void update(RangeIndex *src);
 			bool find(const TItemKey rangeIndex, TRangePtr &range);
 			TItemKey calcRangeIndex(const TItemKey rangeIndex);
-			bool loadRange(TRangePtr &range, const TItemKey rangeIndex, class ClusterManager &clusterManager, Mysql &sql);
+			bool loadRange(TRangePtr &range, const TItemKey rangeIndex, class IndexManager *index, 
+				class ClusterManager &clusterManager, Mysql &sql);
 		private:
 			TIndexID _id;
 			TStatus _status;
@@ -106,6 +107,12 @@ namespace fl {
 			StorageNode *getPutStorage(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager, 
 				bool &wasAdded);
 			static ModTimeTag genNewTimeTag();
+			void addRange(TRangePtr &range)
+			{
+				_sync.lock();
+				_addRange(range);
+				_sync.unLock();
+			}
 		private:
 			static uint32_t _curOperation;
 			bool _loadIndex(Mysql &sql);
@@ -116,6 +123,7 @@ namespace fl {
 			typedef unordered_map<TLevel, TSubLevelMap> TLevelMap;
 			TLevelMap _index;
 			
+			void _addRange(TRangePtr &range);
 			typedef unordered_map<TRangeID, TRangePtr> TRangeMap;
 			TRangeMap _ranges;
 			

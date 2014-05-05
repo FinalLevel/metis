@@ -33,12 +33,14 @@ namespace fl {
 				const std::string &host, const std::string &fileName, const std::string &query);
 			static void setInited(class Manager *manager);
 			virtual bool reset(); 
+			virtual EFormResult getMoreDataToSend(BString &networkBuffer, class HttpEvent *http) override;
 			
 			// StorageCMDEventInterface
 			virtual void itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
 				const ItemHeader *item);
 			virtual void itemPut(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent);
 			virtual bool getMorePutData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer);
+			virtual void itemChunkGet(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent);
 			
 			// TimerEventInterface
 			virtual void timerCall(class TimerEvent *te) override;

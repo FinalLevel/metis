@@ -274,7 +274,7 @@ bool Slice::get(BString &data, const TItemSize dataSeek, const TItemSize request
 {
 	AutoReadWriteLockRead autoSyncRead(&_sync);
 	TSeek seek = dataSeek + requestSeek + sizeof(ItemHeader);
-	if ((seek +  requestSize) >= _size) {
+	if ((seek +  requestSize) > _size) {
 		log::Fatal::L("Can't get out of range sliceID %u, seek %u\n", _sliceID, (dataSeek +  requestSeek +  requestSize));
 		return false;
 	}

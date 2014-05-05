@@ -177,7 +177,7 @@ StorageEvent::ECallResult StorageEvent::_parsePut()
 {
 	ssize_t writeSize = _networkBuffer->size();
 	size_t skipSize = 0;
-	if (_putTmpFile.descr() == INVALID_SOCKET) {
+	if (_putTmpFile.descr() == 0) {
 		if (_cmd.size < sizeof(ItemHeader)) {
 			log::Error::L("Put cmd can't have size less than %u, but its size is %u\n", sizeof(ItemHeader), _cmd.size);
 			return _sendStatus(EStorageAnswerStatus::STORAGE_ANSWER_ERROR);
@@ -257,14 +257,14 @@ const StorageEvent::ECallResult StorageEvent::call(const TEvents events)
 	
 	if (events & E_INPUT) {
 		if (_curState == ST_WAIT_REQUEST) {
-			if (!_read()) {
-				_endWork();
-				return FINISHED;
-			}
+			return _read();
 		}
 	}
 	
 	if (events & E_OUTPUT) {
+		if (_curState == ST_WAIT_SEND) {
+			return _send();
+		}
 	}
 	return SKIP;
 }

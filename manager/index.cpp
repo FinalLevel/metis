@@ -132,6 +132,11 @@ bool IndexManager::_loadIndex(Mysql &sql)
 	return true;	
 }
 
+void IndexManager::_addRange(TRangePtr &range)
+{
+	_ranges.emplace(range->rangeID(), range);
+}
+
 bool IndexManager::_loadIndexRanges(Mysql &sql, ClusterManager &clusterManager)
 {
 	auto res = sql.query(INDEX_RANGE_SQL);
@@ -150,6 +155,7 @@ bool IndexManager::_loadIndexRanges(Mysql &sql, ClusterManager &clusterManager)
 		c++;
 		TRangePtr range(new Range(res.get(), clusterManager));
 		f->second->addNL(range);
+		_addRange(range);
 	}
 	log::Info::L("Load %u index ranges\n", c);
 	return true;
@@ -182,6 +188,8 @@ bool IndexManager::parseURL(const std::string &host, const std::string &fileName
 	bzero(&item, sizeof(item));
 	const char *pFileName = fileName.c_str();
 	char *pEnd = NULL;
+	if (*pFileName == '/')
+		pFileName++;
 	item.level = strtoul(pFileName, &pEnd, 10);
 	if (!pEnd || (*pEnd != '/')) {
 		log::Warning::L("Can't find level in %s\n", fileName.c_str());
@@ -189,9 +197,8 @@ bool IndexManager::parseURL(const std::string &host, const std::string &fileName
 	}
 	pFileName = pEnd + 1;
 	item.subLevel = strtoul(pFileName, &pEnd, 10);
-	if (!pEnd || (*pEnd != '/')) {
-		log::Warning::L("Can't find sublevel in %s\n", fileName.c_str());
-		return false;
+	if (*pEnd != '/') {
+		return true;
 	}
 	pFileName = pEnd + 1;
 	item.itemKey = convertStringTo<decltype(item.itemKey)>(pFileName, &pEnd, 10);
@@ -203,7 +210,8 @@ bool IndexManager::parseURL(const std::string &host, const std::string &fileName
 	return true;
 }
 
-bool RangeIndex::loadRange(TRangePtr &range, const TItemKey rangeIndex, ClusterManager &clusterManager, Mysql &sql)
+bool RangeIndex::loadRange(TRangePtr &range, const TItemKey rangeIndex, IndexManager *index, 
+	ClusterManager &clusterManager, Mysql &sql)
 {
 	auto sqlQuery = sql.createQuery();
 	sqlQuery << INDEX_RANGE_SQL << " WHERE indexID=" << ESC << _id << " AND rangeIndex=" << ESC << rangeIndex;
@@ -214,6 +222,7 @@ bool RangeIndex::loadRange(TRangePtr &range, const TItemKey rangeIndex, ClusterM
 	}
 	range.reset(new Range(res.get(), clusterManager));
 	add(range);
+	index->addRange(range);
 	return true;
 }
 
@@ -234,7 +243,12 @@ bool IndexManager::findAndFill(ItemHeader &item, TRangePtr &range)
 	autoSync.unLock();
 	
 	auto rangeIndex = rangesIndex->calcRangeIndex(item.itemKey);
-	return rangesIndex->find(rangeIndex, range);
+	if (rangesIndex->find(rangeIndex, range)) {
+		item.rangeID = range->rangeID();
+		return true;
+	}
+	else 
+		return false;
 }
 
 bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager &clusterManager, bool &wasAdded)
@@ -273,7 +287,7 @@ bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager
 			return false;
 
 		wasAdded = true;
-		if (!rangesIndex->loadRange(range, rangeIndex, clusterManager, sql))
+		if (!rangesIndex->loadRange(range, rangeIndex, this, clusterManager, sql))
 			return false;
 	}
 	item.rangeID = range->rangeID();
