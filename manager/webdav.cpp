@@ -39,7 +39,6 @@ ManagerWebDavInterface::~ManagerWebDavInterface()
 bool ManagerWebDavInterface::reset()
 {
 	if (WebDavInterface::reset()) {
-		log::Info::L("ManagerWebDavInterface::reset()\n");
 		delete _storageCmd;
 		_storageCmd = NULL;
 		return true;

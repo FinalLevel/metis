@@ -310,7 +310,7 @@ void StorageCMDPut::repeat(class StorageCMDEvent *ev)
 }
 
 StorageCMDItemInfo::StorageCMDItemInfo(StorageCMDEventPool *pool, const ItemIndex &item, EPollWorkerThread *thread)
-	: _pool(pool), _item(item), _thread(thread), _interface(NULL)
+	: _pool(pool), _item(item), _thread(thread), _interface(NULL), _timer(NULL)
 {
 }
 
