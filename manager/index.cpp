@@ -17,6 +17,7 @@
 #include "time.hpp"
 
 using namespace fl::metis;
+using namespace fl::metis::manager;
 using namespace fl::utils;
 using fl::db::ESC;
 using fl::chrono::Time;
@@ -51,14 +52,27 @@ void Range::update(Range *src)
 	_managerID = src->_managerID;
 }
 
-StorageNode *Range::getPutStorage(const TSize size, Config *config, class ClusterManager &clusterManager, 	bool &wasAdded)
+bool Range::getPutStorages(const TSize size, Config *config, class ClusterManager &clusterManager, 
+	TStorageList &storages, bool &wasAdded)
 {
 	for (auto s = _storages.begin(); s != _storages.end(); s++) {
-		if ((*s)->canPut(size))
-			return s->get();
+		if ((*s)->canPut(size)) {
+			bool found = false;
+			for (auto existsStorage = storages.begin(); existsStorage != storages.end(); existsStorage++) {
+				if ((*existsStorage)->groupID() == (*s)->groupID()) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {	
+				storages.push_back(*s);
+				if (storages.size() >= config->minimumCopies())
+					return true;
+			}
+		}
 	}
 	//TODO: Add new storage
-	return NULL;
+	return ! storages.empty();
 }
 
 namespace EIndexFlds
@@ -347,8 +361,8 @@ bool IndexManager::loadLevel(const TLevel level, const TSubLevel subLevel, Mysql
 	return true;
 }
 
-StorageNode *IndexManager::getPutStorage(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager,
-	bool &wasAdded)
+bool IndexManager::getPutStorages(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager,
+	TStorageList &storages, bool &wasAdded)
 {
 	wasAdded = false;
 	TRangePtr range;
@@ -360,6 +374,6 @@ StorageNode *IndexManager::getPutStorage(const TRangeID rangeID, const TSize siz
 	}
 	range = f->second;
 	autoSync.unLock();
-	return range->getPutStorage(size, _config, clusterManager, wasAdded);
+	return range->getPutStorages(size, _config, clusterManager, storages, wasAdded);
 }
 

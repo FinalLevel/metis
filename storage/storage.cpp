@@ -62,13 +62,14 @@ bool Storage::remove(const ItemHeader &itemHeader)
 	}
 }
 
-bool Storage::findAndFill(ItemHeader &item)
+bool Storage::findAndFill(const ItemIndex &itemIndex, GetItemInfoAnswer &itemInfo)
 {
 	Range::Entry entry;
-	if (!_index.find(item.rangeID, item.itemKey, entry))
+	if (!_index.find(itemIndex.rangeID, itemIndex.itemKey, entry))
 		return false;	
-	item.size = entry.size;
-	item.timeTag = entry.timeTag;
+	itemInfo.index = itemIndex;
+	itemInfo.size = entry.size;
+	itemInfo.timeTag = entry.timeTag;
 	return true;
 }
 

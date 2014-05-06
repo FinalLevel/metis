@@ -39,9 +39,9 @@ ManagerWebDavInterface::~ManagerWebDavInterface()
 bool ManagerWebDavInterface::reset()
 {
 	if (WebDavInterface::reset()) {
+		log::Info::L("ManagerWebDavInterface::reset()\n");
 		delete _storageCmd;
 		_storageCmd = NULL;
-		_timerEvent.stop();
 		return true;
 	} else
 		return false;
@@ -81,52 +81,45 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_formGet(BString &networkBu
 	if (!_manager->findAndFill(_item, range)) {
 		return EFormResult::RESULT_ERROR;
 	}
+	
 	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)http->thread()->threadSpecificData();
-	_storageCmd = threadSpec->storageCmdEventPool.mkStorageItemInfo(range->storages(), http->thread(), this, _item);
+	std::unique_ptr<StorageCMDItemInfo> storageCmd(new StorageCMDItemInfo(&threadSpec->storageCmdEventPool, 
+		ItemIndex(_item.rangeID, _item.itemKey), http->thread()));
 	_error = ERROR_503_SERVICE_UNAVAILABLE;
-	if (!_storageCmd) {
+	if (!storageCmd->start(range->storages(), this)) {
 		log::Error::L("_formGet: Can't make StorageItemInfo from the pool\n");
 		return EFormResult::RESULT_ERROR;
 	}
-	static const uint32_t STORAGES_WAIT_NONOSEC_TIME = 70000000; // 70 ms
-	if (!_timerEvent.setTimer(0, STORAGES_WAIT_NONOSEC_TIME, 0, 0, this))
-		return EFormResult::RESULT_ERROR;
-	if (!_httpEvent->thread()->ctrl(&_timerEvent)) {
-		log::Error::L("_formGet: Can't add a timer event to the pool\n");
-		return EFormResult::RESULT_ERROR;
-	}
+	_storageCmd = storageCmd.release();
 	return EFormResult::RESULT_OK_WAIT;
 }
 
-WebDavInterface::EFormResult ManagerWebDavInterface::_get(TStoragePtrList &storageNodes, BString &networkBuffer, 
-	StorageCMDEventPool &pool)
+WebDavInterface::EFormResult ManagerWebDavInterface::_get(TStorageList &storages)
 {
-	for (auto storage = storageNodes.begin(); storage != storageNodes.end(); storage++) {
-		_storageCmd = pool.mkStorageCMDGet(_item, *storage, _httpEvent->thread(), this, maxPostInMemmorySize());
-		if (_storageCmd)
-			return EFormResult::RESULT_OK_WAIT;
+	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)_httpEvent->thread()->threadSpecificData();
+	std::unique_ptr<StorageCMDGet> storageCmd(new StorageCMDGet(storages, &threadSpec->storageCmdEventPool, _item, 
+		maxPostInMemmorySize()));
+	if (storageCmd->start(_httpEvent->thread(), this)) {
+		_storageCmd = storageCmd.release();
+		return EFormResult::RESULT_OK_WAIT;
 	}
 	return EFormResult::RESULT_ERROR;
 }
 
-WebDavInterface::EFormResult ManagerWebDavInterface::_gotItemInfo()
+WebDavInterface::EFormResult ManagerWebDavInterface::_get(StorageCMDItemInfo *cmd)
 {
-	_timerEvent.stop();
-	
-	TStoragePtrList storageNodes;
-	if (!static_cast<StorageCMDItemInfo*>(_storageCmd)->getStoragesAndFillItem(_item, storageNodes)) {
+	TStorageList storageNodes;
+	if (!cmd->getStoragesAndFillItem(_item, storageNodes)) {
 		log::Error::L("Can't get item info\n");
 		return EFormResult::RESULT_ERROR;
 	}
-	StorageCMDEventPool &pool = static_cast<StorageCMDItemInfo*>(_storageCmd)->pool();
 	delete _storageCmd;
 	_storageCmd = NULL;
-	if (storageNodes.empty())
-	{
+	if (storageNodes.empty()) {
 		_error = ERROR_404_NOT_FOUND;
 		return EFormResult::RESULT_ERROR;
 	}
-	return _get(storageNodes, *_httpEvent->networkBuffer(), pool);
+	return _get(storageNodes);
 }
 
 WebDavInterface::EFormResult ManagerWebDavInterface::_formPut(BString &networkBuffer, class HttpEvent *http)
@@ -138,53 +131,41 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_formPut(BString &networkBu
 		_error = ERROR_409_CONFLICT;
 		return EFormResult::RESULT_ERROR;
 	};
+	_item.size = _putData.size();
+	if (_status & ST_POST_SPLITED) {
+		_item.size = _postTmpFile.fileSize();
+	}
+
 	if (!wasAdded) { // need check previous copy
-		_storageCmd = threadSpec->storageCmdEventPool.mkStorageItemInfo(range->storages(), http->thread(), this, _item);
+		_storageCmd = new StorageCMDItemInfo(&threadSpec->storageCmdEventPool, ItemIndex(_item.rangeID, _item.itemKey), 
+			http->thread());
 		_error = ERROR_503_SERVICE_UNAVAILABLE;
-		if (!_storageCmd) {
+		if (!static_cast<StorageCMDItemInfo*>(_storageCmd)->start(range->storages(), this)) {
 			log::Error::L("_formPut: Can't make StorageItemInfo from the pool\n");
 			return EFormResult::RESULT_ERROR;
 		}
 		return EFormResult::RESULT_OK_WAIT;	
 	}
-	return _put(networkBuffer, threadSpec->storageCmdEventPool);
+	TStorageList storages;
+	if (!_manager->getPutStorages(_item.rangeID, _item.size, storages)) {
+		log::Error::L("Put: Can't find storage to fit %u\n", _item.size);
+		_error = ERROR_507_INSUFFICIENT_STORAGE;
+		return EFormResult::RESULT_ERROR;		
+	}
+	return _put(storages);
 }
 
-WebDavInterface::EFormResult ManagerWebDavInterface::_put(BString &networkBuffer, StorageCMDEventPool &pool)
-{
-	_item.size = _putData.size();
-	if (_status & ST_POST_SPLITED) {
-		_item.size = _postTmpFile.fileSize();
-	}
-	
-	StorageNode *storageNode = NULL;
-	if (_storageCmd) {
-		storageNode = static_cast<StorageCMDItemInfo*>(_storageCmd)->getPutStorage(_item.size);
-		delete _storageCmd;
-		_storageCmd = NULL;
-	}
-
-	if (!storageNode) {
-		storageNode = _manager->getPutStorage(_item.rangeID, _item.size);
-		if (!storageNode) {
-			log::Error::L("Put: Can't find storage to fit %u\n", _item.size);
-			_error = ERROR_507_INSUFFICIENT_STORAGE;
-			return EFormResult::RESULT_ERROR;
-		}	
-	}
-	
-	_storageCmd = pool.mkStorageCMDPut(_item, storageNode, _httpEvent->thread(), this, 
-			(_status & ST_POST_SPLITED) ?	&_postTmpFile : NULL, _putData);
-	if (!_storageCmd) {
+WebDavInterface::EFormResult ManagerWebDavInterface::_put(TStorageList &storages)
+{	
+	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)_httpEvent->thread()->threadSpecificData();
+	std::unique_ptr<StorageCMDPut> storageCmd(new StorageCMDPut(_item, &threadSpec->storageCmdEventPool,   
+			(_status & ST_POST_SPLITED) ?	&_postTmpFile : NULL, _putData));
+	if (!storageCmd->start(storages, _httpEvent->thread(), this)) {
 		_error = ERROR_503_SERVICE_UNAVAILABLE;
 		log::Error::L("_formPut: Can't make StorageCMDPut from the pool\n");
 		return EFormResult::RESULT_ERROR;
 	}
-	if (!static_cast<StorageCMDPut*>(_storageCmd)->makeCMD()) {
-		_error = ERROR_503_SERVICE_UNAVAILABLE;
-		log::Error::L("_formPut: Can't run storage put cmd\n");
-		return EFormResult::RESULT_ERROR;
-	}
+	_storageCmd = storageCmd.release();
 	return EFormResult::RESULT_OK_WAIT;
 }
 
@@ -196,67 +177,86 @@ ManagerWebDavInterface::EFormResult ManagerWebDavInterface::getMoreDataToSend(BS
 		log::Error::L("Receive NULL _storageCmd in getMoreDataToSend\n");
 		return EFormResult::RESULT_FINISH;
 	}
-	if (getCMD->getNextChunk(http->thread(), this))
+	if (getCMD->getNextChunk(http->thread()))
 		return EFormResult::RESULT_OK_WAIT;
 	else
 		return EFormResult::RESULT_FINISH;
 }
 
-void ManagerWebDavInterface::itemChunkGet(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent)
+void ManagerWebDavInterface::itemGetChunkError(class StorageCMDGet *cmd, const bool isSended)
 {
-	StorageCMDGet *getCMD = static_cast<StorageCMDGet*>(_storageCmd);
-	bool isSended = getCMD->isSended();
-	if (res == EStorageAnswerStatus::STORAGE_ANSWER_OK) {
-		auto networkBuffer = _httpEvent->networkBuffer();
-		networkBuffer->clear();
-		if (isSended) {
-			storageEvent->moveItemData(*networkBuffer);
-		} else {
-			auto contentType = MimeType::getMimeTypeStrFromFileName(_fileName);
-			HttpAnswer answer(*networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
-			answer.setContentLength(_item.size);
-			storageEvent->addItemData(*networkBuffer);
-		}
-		if (getCMD->canFinish()) {
-			delete _storageCmd;
-			_storageCmd = NULL;
-			_httpEvent->sendAnswer(_keepAliveState()); 
-		} else {
-			_httpEvent->sendAnswer(EFormResult::RESULT_OK_PARTIAL_SEND);
-		}
-		return;
-	} 
 	if (isSended) { // if data was sent then close connection
 		_httpEvent->sendAnswer(EFormResult::RESULT_FINISH);
-		return;
+	} else {
+		_error = ERROR_503_SERVICE_UNAVAILABLE;
+		_httpEvent->sendAnswer(EFormResult::RESULT_ERROR);
 	}
-		
-	if (res == EStorageAnswerStatus::STORAGE_ANSWER_NOT_FOUND) {
-		_error = ERROR_404_NOT_FOUND; 
-	}
-	_httpEvent->sendAnswer(EFormResult::RESULT_ERROR);
 }
 
-void ManagerWebDavInterface::itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
-	const ItemHeader *item)
+void ManagerWebDavInterface::itemGetChunkReady(class StorageCMDGet *cmd, NetworkBuffer &buffer, const bool isSended)
 {
-	bool isComplete = static_cast<StorageCMDItemInfo*>(_storageCmd)->addAnswer(res, storageEvent, item);
-	if (!isComplete)
-		return;
+	if (_storageCmd != cmd) {
+		log::Fatal::L("itemGetChunkReady: Receive notify from another handler\n");
+		throw std::exception();
+	}
+	auto networkBuffer = _httpEvent->networkBuffer();
+	networkBuffer->clear();
+	if (isSended) {
+		*networkBuffer = std::move(buffer);
+	} else {
+		auto contentType = MimeType::getMimeTypeStrFromFileName(_fileName);
+		HttpAnswer answer(*networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
+		answer.setContentLength(_item.size);
+		networkBuffer->add(buffer.c_str() + buffer.sended(), buffer.size() - buffer.sended());
+	}
+	
+	if (cmd->canFinish()) {
+		delete _storageCmd;
+		_storageCmd = NULL;
+		_httpEvent->sendAnswer(_keepAliveState()); 
+	} else {
+		_httpEvent->sendAnswer(EFormResult::RESULT_OK_PARTIAL_SEND);
+	}
+}
+
+void ManagerWebDavInterface::itemInfo(class StorageCMDItemInfo *cmd)
+{
+	if (_storageCmd != cmd) {
+		log::Fatal::L("itemInfo: Receive notify from another handler\n");
+		throw std::exception();
+	}
 	
 	EFormResult result = EFormResult::RESULT_ERROR;
 	if (_requestType == ERequestType::GET) {
-		result = _gotItemInfo();
+		result = _get(cmd);
 	} else if (_requestType == ERequestType::PUT) {
-		result = _put(*_httpEvent->networkBuffer(), static_cast<StorageCMDItemInfo*>(_storageCmd)->pool());
+		TStorageList storages = cmd->getPutStorages(_item.size, _manager->config()->minimumCopies());
+		if (storages.size() < _manager->config()->minimumCopies()) {
+			_manager->getPutStorages(_item.rangeID, _item.size, storages);
+		}
+		if (storages.empty()) {
+			_error = ERROR_507_INSUFFICIENT_STORAGE;
+			log::Error::L("Can't find storage for putting data\n");
+		}
+		else {
+			delete _storageCmd;
+			_storageCmd = NULL;
+			result = _put(storages);
+		}
 	}
 	if (result != EFormResult::RESULT_OK_WAIT)
 		_httpEvent->sendAnswer(result);
 }
 
-void ManagerWebDavInterface::itemPut(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent)
+void ManagerWebDavInterface::itemPut(StorageCMDPut *cmd, const bool isCompleted)
 {
-	if ((res == EStorageAnswerStatus::STORAGE_ANSWER_OK) && (static_cast<StorageCMDPut*>(_storageCmd)->size() == 0)) {
+	if (_storageCmd != cmd) {
+		log::Fatal::L("itemPut: Receive notify from another handler\n");
+		throw std::exception();
+	}
+	delete _storageCmd;
+	_storageCmd = NULL;
+	if (isCompleted) {
 		auto putResult = WebDavInterface::_formPut(*_httpEvent->networkBuffer(), _httpEvent);
 		_httpEvent->sendAnswer(putResult);
 	} else {
@@ -264,27 +264,7 @@ void ManagerWebDavInterface::itemPut(const EStorageAnswerStatus res, class Stora
 		_error = ERROR_503_SERVICE_UNAVAILABLE;
 		_httpEvent->sendAnswer(EFormResult::RESULT_ERROR);
 	}
-	delete _storageCmd;
-	_storageCmd = NULL;
 }
-
-bool ManagerWebDavInterface::getMorePutData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer)
-{
-	return static_cast<StorageCMDPut*>(_storageCmd)->getMoreData(storageEvent, buffer);
-}
-
-void  ManagerWebDavInterface::timerCall(class TimerEvent *te)
-{
-	EFormResult result = EFormResult::RESULT_ERROR;
-	_timerEvent.stop();
-	if (_requestType == ERequestType::GET) {
-		if (_item.timeTag.tag == 0) // timer was called while item info waiting
-			result = _gotItemInfo();
-	}
-	if (result != EFormResult::RESULT_OK_WAIT)
-		_httpEvent->sendAnswer(result);
-}
-
 
 ManagerWebDavEventFactory::ManagerWebDavEventFactory(class Config *config)
 	: _config(config)

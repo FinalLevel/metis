@@ -17,6 +17,7 @@
 
 namespace fl {
 	namespace metis {
+		using namespace manager;
 		class Manager
 		{
 		public:
@@ -29,7 +30,11 @@ namespace fl {
 			bool fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded);
 			bool findAndFill(ItemHeader &item, TRangePtr &range);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
-			StorageNode *getPutStorage(const TRangeID rangeID, const TSize size);
+			bool getPutStorages(const TRangeID rangeID, const TSize size, TStorageList &storages);
+			class Config *config()
+			{
+				return _config;
+			}
 		private:
 			class Config *_config;
 			ClusterManager _clusterManager;

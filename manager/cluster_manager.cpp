@@ -113,7 +113,7 @@ void ClusterManager::findStorages(TServerIDList &storageIds, TStorageList &stora
 		if (storage == _storages.end()) {
 			log::Warning::L("Can't find storage %u\n", *storageID);
 		} else {
-			storages.push_back(storage->second);
+			storages.push_back(storage->second.get());
 		}
 	}
 }
@@ -121,7 +121,7 @@ void ClusterManager::findStorages(TServerIDList &storageIds, TStorageList &stora
 TServerID ClusterManager::findFreeManager()
 {
 	AutoMutex autoSync(&_sync);
-	TManagerNodePtrList managers;
+	TManagerList managers;
 	for (auto manager = _managers.begin(); manager != _managers.end(); manager++) {
 		if (manager->second->isFree()) {
 			managers.push_back(manager->second.get());
@@ -135,7 +135,7 @@ TServerID ClusterManager::findFreeManager()
 bool ClusterManager::findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs)
 {
 	AutoMutex autoSync(&_sync);
-	TStorageNodePtrList freeStorages;
+	TStorageList freeStorages;
 	for (auto storage = _storages.begin(); storage != _storages.end(); storage++) {
 		if (storage->second->isFree()) {
 			bool newGroup = true;

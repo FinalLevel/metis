@@ -103,7 +103,8 @@ namespace fl {
 		
 		enum EStorageAnswerStatus : uint8_t
 		{
-			STORAGE_ANSWER_OK = 0,
+			STORAGE_NO_ANSWER = 0,
+			STORAGE_ANSWER_OK,
 			STORAGE_ANSWER_ERROR,
 			STORAGE_ANSWER_NOT_FOUND,
 		};
@@ -113,13 +114,30 @@ namespace fl {
 			TSize size;
 		} __attribute__((packed));
 		
+		struct ItemIndex
+		{
+			ItemIndex(const TRangeID rangeID = 0, const TItemKey itemKey = 0)
+				: rangeID(rangeID), itemKey(itemKey)
+			{
+			}
+			TRangeID rangeID;
+			TItemKey itemKey;
+		} __attribute__((packed));
+		
+		struct GetItemInfoAnswer
+		{
+			ItemIndex index;
+			TItemSize size;
+			ModTimeTag timeTag;
+		} __attribute__((packed));
+		
 		struct GetItemChunkRequest
 		{
 			TRangeID rangeID;
 			TItemKey itemKey;
 			TItemSize chunkSize;
 			TItemSize seek;
-		};
+		} __attribute__((packed));
 	};
 };
 

@@ -44,7 +44,6 @@ namespace fl {
 			uint32_t _port;
 			TManagerStatus _status;
 		};
-		typedef std::shared_ptr<ManagerNode> TManagerNodePtr;
 		
 		class StorageNode
 		{
@@ -84,11 +83,10 @@ namespace fl {
 			TStorageStatus _status;
 			uint32_t _weight;
 		};
-		typedef std::shared_ptr<StorageNode> TStorageNodePtr;
 		
 		typedef std::vector<TServerID> TServerIDList;
-		typedef std::vector<TStorageNodePtr> TStorageList;
-		typedef std::vector<StorageNode*> TStoragePtrList;
+		typedef std::vector<StorageNode*> TStorageList;
+		typedef std::vector<ManagerNode*> TManagerList;
 		
 		class ClusterManager
 		{
@@ -101,14 +99,15 @@ namespace fl {
 		private:
 			bool _loadManagers(Mysql &sql);
 			bool _loadStorages(Mysql &sql);
+			
+			typedef std::shared_ptr<ManagerNode> TManagerNodePtr;
 			typedef std::map<TServerID, TManagerNodePtr> TManagerNodeMap;
 			TManagerNodeMap _managers;
 			
+			typedef std::shared_ptr<StorageNode> TStorageNodePtr;
 			typedef std::map<TServerID, TStorageNodePtr> TStorageNodeMap;
 			TStorageNodeMap _storages;
 			
-			typedef std::vector<StorageNode*> TStorageNodePtrList;
-			typedef std::vector<ManagerNode*> TManagerNodePtrList;
 			Mutex _sync;
 		};
 	};

@@ -117,20 +117,20 @@ StorageEvent::ECallResult StorageEvent::_itemGetChunk(const char *data)
 
 StorageEvent::ECallResult StorageEvent::_itemInfo(const char *data)
 {
-	if (_cmd.size < sizeof(ItemHeader)) {
+	if (_cmd.size < sizeof(ItemIndex)) {
 		log::Error::L("StorageEvent::_itemInfo has received cmd.size < sizeof(ItemHeader)\n");
 		return FINISHED;
 	}
-	ItemHeader ih = *(ItemHeader*)data;
+	ItemIndex itemIndex = *(ItemIndex*)data;
 	_networkBuffer->clear();
 	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
 	sa.status = STORAGE_ANSWER_NOT_FOUND;
 	sa.size = 0;
-	
-	if (_storage->findAndFill(ih)) {
+	GetItemInfoAnswer itemInfo;
+	if (_storage->findAndFill(itemIndex, itemInfo)) {
 		sa.status = STORAGE_ANSWER_OK;
-		sa.size = sizeof(ih);
-		_networkBuffer->add((char*)&ih, sizeof(ih));
+		sa.size = sizeof(itemInfo);
+		_networkBuffer->add((char*)&itemInfo, sizeof(itemInfo));
 	}
 	return _send();
 }
@@ -230,13 +230,13 @@ StorageEvent::ECallResult StorageEvent::_read()
 	}
 	else if (res == NetworkBuffer::IN_PROGRESS)
 		return SKIP;
-	if ((size_t)_networkBuffer->size() > sizeof(StorageCmd)) {
+	if ((size_t)_networkBuffer->size() >= sizeof(StorageCmd)) {
 		if (!_cmd.size)
 			_cmd = *(StorageCmd*)_networkBuffer->c_str();
 		if (_cmd.cmd  == EStorageCMD::STORAGE_PUT)
 		{
 			return _parsePut();
-		} else if ((_cmd.size + sizeof(StorageCmd)) >= (size_t)_networkBuffer->size())
+		} else if ((size_t)_networkBuffer->size() >= (_cmd.size + sizeof(StorageCmd)))
 			return _parseCmd(_networkBuffer->c_str() + sizeof(StorageCmd));
 	}
 	_updateTimeout();

@@ -18,13 +18,13 @@
 #include "compatibility.hpp"
 #include "storage_cmd_event.hpp"
 #include "index.hpp"
-#include "timer_event.hpp"
 
 namespace fl {
 	namespace metis {
 		using fl::http::WebDavInterface;
 		
-		class ManagerWebDavInterface : public WebDavInterface, StorageCMDEventInterface, TimerEventInterface
+		class ManagerWebDavInterface : public WebDavInterface, StorageCMDItemInfoInterface, StorageCMDGetInterface, 
+																		StorageCMDPutInterface
 		{
 		public:
 			ManagerWebDavInterface();
@@ -35,15 +35,15 @@ namespace fl {
 			virtual bool reset(); 
 			virtual EFormResult getMoreDataToSend(BString &networkBuffer, class HttpEvent *http) override;
 			
-			// StorageCMDEventInterface
-			virtual void itemInfo(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent, 
-				const ItemHeader *item);
-			virtual void itemPut(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent);
-			virtual bool getMorePutData(class StorageCMDEvent *storageEvent, NetworkBuffer &buffer);
-			virtual void itemChunkGet(const EStorageAnswerStatus res, class StorageCMDEvent *storageEvent);
+			// StorageCMDItemInfoInterface
+			virtual void itemInfo(class StorageCMDItemInfo *cmd) override;
 			
-			// TimerEventInterface
-			virtual void timerCall(class TimerEvent *te) override;
+			// StorageCMDPutInterface
+			virtual void itemPut(class StorageCMDPut *cmd, const bool isCompleted) override;
+			
+			//StorageCMDGetInterface
+			virtual void itemGetChunkReady(class StorageCMDGet *cmd, NetworkBuffer &buffer, const bool isSended) override;
+			virtual void itemGetChunkError(class StorageCMDGet *cmd, const bool isSended) override;
 			
 			void setHttpEvent(HttpEvent *httpEvent)
 			{
@@ -56,11 +56,10 @@ namespace fl {
 			virtual EFormResult _formGet(BString &networkBuffer, class HttpEvent *http) override;
 			virtual bool _mkCOL() override;
 			
-			EFormResult _put(BString &networkBuffer, StorageCMDEventPool &pool);
-			EFormResult _get(TStoragePtrList &storageNodes, BString &networkBuffer, StorageCMDEventPool &pool);
-			EFormResult _gotItemInfo();
+			EFormResult _put(TStorageList &storages);
+			EFormResult _get(TStorageList &storages);
+			EFormResult _get(StorageCMDItemInfo *cmd);
 			ItemHeader _item;
-			TimerEvent _timerEvent;
 			BasicStorageCMD *_storageCmd;
 			HttpEvent *_httpEvent;
 		};
