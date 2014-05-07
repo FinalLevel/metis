@@ -17,6 +17,7 @@
 #include "config.hpp"
 #include "mysql.hpp"
 #include "mutex.hpp"
+#include "event_thread.hpp"
 #include <map>
 
 namespace fl {
@@ -25,6 +26,7 @@ namespace fl {
 		using fl::db::MysqlResult;
 		using fl::threads::Mutex;
 		using fl::threads::AutoMutex;
+		using fl::events::EPollWorkerThread;
 		
 		class ManagerNode
 		{
@@ -75,6 +77,15 @@ namespace fl {
 			{
 				return true;
 			}
+			static const TStorageStatus ST_ACTIVE = 0x1;
+			static const TStorageStatus ST_DOWN		= 0x2;
+			bool isActive() const
+			{
+				return (_status & ST_ACTIVE);
+			}
+			void ping(StoragePingAnswer &storageAnswer);
+			void error();
+			static const uint8_t MAX_ERRORS_BEFORE_DOWN = 3;
 		private:
 			TServerID _id;
 			TStorageGroupID _groupID;
@@ -82,6 +93,8 @@ namespace fl {
 			uint32_t _port;
 			TStorageStatus _status;
 			uint32_t _weight;
+			int64_t _leftSpace;
+			uint8_t _errors;
 		};
 		
 		typedef std::vector<TServerID> TServerIDList;
@@ -91,11 +104,13 @@ namespace fl {
 		class ClusterManager
 		{
 		public:
+			ClusterManager();
 			bool loadAll(Mysql &sql);
 			bool findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs);
 			TServerID findFreeManager();
 			void findStorages(TServerIDList &storageIds, TStorageList &storages);
-			void pingStorages();
+			bool startStoragesPinging(EPollWorkerThread *thread);
+			TStorageList storages();
 		private:
 			bool _loadManagers(Mysql &sql);
 			bool _loadStorages(Mysql &sql);
@@ -109,6 +124,7 @@ namespace fl {
 			TStorageNodeMap _storages;
 			
 			Mutex _sync;
+			class StorageCMDPinging *_storagesPinging;
 		};
 	};
 };

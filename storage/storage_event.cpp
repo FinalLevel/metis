@@ -115,10 +115,54 @@ StorageEvent::ECallResult StorageEvent::_itemGetChunk(const char *data)
 	return _send();
 }
 
+StorageEvent::ECallResult StorageEvent::_deleteItem(const char *data)
+{
+	if (_cmd.size < sizeof(ItemHeader)) {
+		log::Error::L("StorageEvent::_deleteItem has received cmd.size < sizeof(ItemHeader)\n");
+		return FINISHED;
+	}
+	ItemHeader ih = *(ItemHeader*)data;
+	_networkBuffer->clear();
+	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+	sa.size = 0;
+	if (_storage->remove(ih)) {
+		sa.status = STORAGE_ANSWER_OK;
+	} else {
+		sa.status = STORAGE_ANSWER_NOT_FOUND;
+	}
+	return _send();
+}
+
+StorageEvent::ECallResult StorageEvent::_ping(const char *data)
+{
+	if (_cmd.size < sizeof(TServerID)) {
+		log::Error::L("StorageEvent::_ping has received cmd.size < sizeof(TServerID)\n");
+		return FINISHED;
+	}
+	TServerID requestServerID = *(TServerID*)data;
+	_networkBuffer->clear();
+	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+	sa.status = STORAGE_ANSWER_ERROR;
+	sa.size = 0;
+
+	StoragePingAnswer storageAnswer;
+	if (_config->serverID() == requestServerID) {
+		if (_storage->ping(storageAnswer)) {
+			storageAnswer.serverID = _config->serverID();
+			sa.status = STORAGE_ANSWER_OK;
+			sa.size = sizeof(storageAnswer);
+			_networkBuffer->add((char*)&storageAnswer, sizeof(storageAnswer));
+		}
+	} else {
+		log::Error::L("StorageEvent::_ping has been requested %u, but it is %u\n", requestServerID, _config->serverID());
+	}
+	return _send();
+}
+
 StorageEvent::ECallResult StorageEvent::_itemInfo(const char *data)
 {
 	if (_cmd.size < sizeof(ItemIndex)) {
-		log::Error::L("StorageEvent::_itemInfo has received cmd.size < sizeof(ItemHeader)\n");
+		log::Error::L("StorageEvent::_itemInfo has received cmd.size < sizeof(ItemIndex)\n");
 		return FINISHED;
 	}
 	ItemIndex itemIndex = *(ItemIndex*)data;
@@ -143,6 +187,10 @@ StorageEvent::ECallResult StorageEvent::_parseCmd(const char *data)
 			return _itemGetChunk(data);
 		case EStorageCMD::STORAGE_ITEM_INFO:
 			return _itemInfo(data);
+		case EStorageCMD::STORAGE_DELETE_ITEM:
+			return _deleteItem(data);
+		case EStorageCMD::STORAGE_PING:
+			return _ping(data);
 		case EStorageCMD::STORAGE_NO_CMD:
 			return _nopCmd();
 		case EStorageCMD::STORAGE_PUT: // never come here

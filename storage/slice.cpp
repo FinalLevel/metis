@@ -517,3 +517,9 @@ bool SliceManager::_recalcSpace()
 		_leftSpace = freeSpace - reserveSpace;
 	return true;
 }
+
+bool SliceManager::ping(StoragePingAnswer &storageAnswer)
+{
+	storageAnswer.leftSpace = _leftSpace;
+	return true;
+}

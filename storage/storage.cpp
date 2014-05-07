@@ -53,11 +53,16 @@ bool Storage::remove(const ItemHeader &itemHeader)
 	if (!_index.find(itemHeader.rangeID, itemHeader.itemKey, entry))
 		return true;
 	
-	if (_sliceManager.remove(itemHeader, entry.pointer)) {
-		_index.remove(itemHeader);
-		return true;
+	if (entry.timeTag <= itemHeader.timeTag) {
+		if (_sliceManager.remove(itemHeader, entry.pointer)) {
+			_index.remove(itemHeader);
+			return true;
+		} else {
+			log::Fatal::L("Can't delete an object from the slice manager\n");
+			return false;
+		}
 	} else {
-		log::Fatal::L("Can't delete an object from the slice manager\n");
+		log::Error::L("Can't delete an newer object\n");
 		return false;
 	}
 }
@@ -78,9 +83,16 @@ bool Storage::get(const GetItemChunkRequest &itemRequest, BString &data)
 	Range::Entry entry;
 	if (!_index.find(itemRequest.rangeID, itemRequest.itemKey, entry))
 		return false;	
+	if (entry.size == 0)
+		return false;
 	if ((itemRequest.seek + itemRequest.chunkSize) > entry.size) {
 		log::Warning::L("Storage::get: Seek %u out of range %u\n", itemRequest.seek + itemRequest.chunkSize, entry.size);
 		return false;
 	}
 	return _sliceManager.get(data, entry.pointer, itemRequest.seek, itemRequest.chunkSize);
+}
+
+bool Storage::ping(StoragePingAnswer &storageAnswer)
+{
+	return _sliceManager.ping(storageAnswer);
 }

@@ -12,6 +12,7 @@
 #include "range_index.hpp"
 
 using namespace fl::metis;
+using namespace fl::metis::storage;
 
 Range::Range()
 	: _minID(std::numeric_limits<decltype(_minID)>::max()), _maxID(0)
@@ -28,7 +29,7 @@ bool Range::remove(const ItemHeader &itemHeader)
 	if (f == _items.end())
 		return false;
 	if (f->second.timeTag <= itemHeader.timeTag)
-		_items.erase(f);
+		f->second.size = 0;
 	return true;
 }
 

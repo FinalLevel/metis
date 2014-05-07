@@ -24,7 +24,7 @@ namespace fl {
 		using fl::http::WebDavInterface;
 		
 		class ManagerWebDavInterface : public WebDavInterface, StorageCMDItemInfoInterface, StorageCMDGetInterface, 
-																		StorageCMDPutInterface
+																		StorageCMDPutInterface, StorageCMDDeleteItemInterface
 		{
 		public:
 			ManagerWebDavInterface();
@@ -45,6 +45,9 @@ namespace fl {
 			virtual void itemGetChunkReady(class StorageCMDGet *cmd, NetworkBuffer &buffer, const bool isSended) override;
 			virtual void itemGetChunkError(class StorageCMDGet *cmd, const bool isSended) override;
 			
+			//StorageCMDDeleteItemInterface
+			virtual void deleteItem(class StorageCMDDeleteItem *cmd, const bool haveNormalyFinished);
+			
 			void setHttpEvent(HttpEvent *httpEvent)
 			{
 				_httpEvent = httpEvent;
@@ -54,6 +57,7 @@ namespace fl {
 			static class Manager *_manager;
 			virtual EFormResult _formPut(BString &networkBuffer, class HttpEvent *http) override;
 			virtual EFormResult _formGet(BString &networkBuffer, class HttpEvent *http) override;
+			virtual EFormResult _formDelete(BString &networkBuffer, class HttpEvent *http) override;
 			virtual bool _mkCOL() override;
 			
 			EFormResult _put(TStorageList &storages);

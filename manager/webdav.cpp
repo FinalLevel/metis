@@ -73,6 +73,43 @@ bool ManagerWebDavInterface::_mkCOL()
 	return true;
 }
 
+WebDavInterface::EFormResult ManagerWebDavInterface::_formDelete(BString &networkBuffer, class HttpEvent *http)
+{
+	_error = ERROR_404_NOT_FOUND;
+	TRangePtr range;
+	if (!_manager->findAndFill(_item, range)) {
+		return EFormResult::RESULT_ERROR;
+	}
+	_item.timeTag = _manager->index().genNewTimeTag();
+	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)http->thread()->threadSpecificData();
+	std::unique_ptr<StorageCMDDeleteItem> storageCmd(new StorageCMDDeleteItem(&threadSpec->storageCmdEventPool, _item));
+	_error = ERROR_503_SERVICE_UNAVAILABLE;
+	if (!storageCmd->start(range->storages(), this, http->thread())) {
+		log::Error::L("_formDelete: Can't make StorageItemInfo from the pool\n");
+		return EFormResult::RESULT_ERROR;
+	}
+	_storageCmd = storageCmd.release();
+	return EFormResult::RESULT_OK_WAIT;
+}
+
+void ManagerWebDavInterface::deleteItem(class StorageCMDDeleteItem *cmd, const bool haveNormalyFinished)
+{
+	if (_storageCmd != cmd) {
+		log::Fatal::L("deleteItem: Receive notify from another handler\n");
+		throw std::exception();
+	}
+	delete _storageCmd;
+	_storageCmd = NULL;
+	if (haveNormalyFinished) {
+		auto putResult = WebDavInterface::_formDelete(*_httpEvent->networkBuffer(), _httpEvent);
+		_httpEvent->sendAnswer(putResult);
+	} else {
+		log::Error::L("deleteItem has received an error from the storage\n");
+		_error = ERROR_503_SERVICE_UNAVAILABLE;
+		_httpEvent->sendAnswer(EFormResult::RESULT_ERROR);
+	}
+}
+
 WebDavInterface::EFormResult ManagerWebDavInterface::_formGet(BString &networkBuffer, class HttpEvent *http)
 {
 	_error = ERROR_404_NOT_FOUND;

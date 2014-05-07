@@ -175,7 +175,78 @@ namespace fl {
 			TStorageRequestVector _requests;
 		};
 		
+		class StorageCMDDeleteItemInterface
+		{
+		public:
+			virtual ~StorageCMDDeleteItemInterface() {};
+			virtual void deleteItem(class StorageCMDDeleteItem *cmd, const bool haveNormalyFinished) = 0;
+		};
 		
+		class StorageCMDDeleteItem : public BasicStorageCMD
+		{
+		public:
+			StorageCMDDeleteItem(StorageCMDEventPool *pool, const ItemHeader &item);
+			virtual ~StorageCMDDeleteItem();
+			bool start(const TStorageList &storages, StorageCMDDeleteItemInterface *interface, EPollWorkerThread *thread);
+			
+			virtual void ready(class StorageCMDEvent *ev, const StorageAnswer &sa) override;
+			virtual void repeat(class StorageCMDEvent *ev) override;
+		private:
+			class StorageCMDEventPool *_pool;
+			ItemHeader _item;
+			StorageCMDDeleteItemInterface *_interface;
+			
+			void _fillCMD(class StorageCMDEvent *storageEvent);
+			void _error(class StorageCMDEvent *ev);
+			struct StorageRequest
+			{
+				StorageRequest(StorageCMDEvent *event, StorageNode *storage)
+					: _status(STORAGE_NO_ANSWER), _event(event), _storage(storage), _reconnects(0)
+				{
+				}
+				StorageRequest(const EStorageAnswerStatus status, StorageNode *storage) 
+					: _status(status), _event(NULL), _storage(storage), _reconnects(0)
+				{
+				}
+				EStorageAnswerStatus _status;
+				StorageCMDEvent *_event;
+				StorageNode *_storage;
+				uint8_t _reconnects;
+			};
+			typedef std::vector<StorageRequest> TStorageRequestVector;
+			TStorageRequestVector _requests;
+		};
+		
+		class StorageCMDPinging : public BasicStorageCMD, TimerEventInterface
+		{
+		public:
+			StorageCMDPinging(ClusterManager *manager, EPollWorkerThread *thread);
+			virtual ~StorageCMDPinging();
+			bool start();
+			virtual void ready(class StorageCMDEvent *ev, const StorageAnswer &sa) override;
+			virtual void repeat(class StorageCMDEvent *ev) override;
+			virtual void timerCall(class TimerEvent *te) override;
+		private:
+			void _fillCMD(StorageCMDEvent *ev);
+			void _ping();
+			ClusterManager *_manager;
+			EPollWorkerThread *_thread;
+			TimerEvent *_timer;
+			struct StorageRequest
+			{
+				StorageRequest(StorageCMDEvent *event, StorageNode *storage, const EStorageAnswerStatus status)
+					: _status(status), _event(event), _storage(storage), _reconnects(0)
+				{
+				}
+				EStorageAnswerStatus _status;
+				StorageCMDEvent *_event;
+				StorageNode *_storage;
+				uint8_t _reconnects;
+			};
+			typedef std::vector<StorageRequest> TStorageRequestVector;
+			TStorageRequestVector _requests;
+		};
+	
 		class StorageCMDEvent : public Event
 		{
 		public:

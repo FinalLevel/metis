@@ -102,7 +102,8 @@ BOOST_AUTO_TEST_CASE (testSliceIndexLoad)
 		BOOST_REQUIRE(sliceManager.loadIndex(index));
 
 		Range::Entry ie;
-		BOOST_CHECK(index.find(RANGE_ID, 2, ie) == false);
+		BOOST_CHECK(index.find(RANGE_ID, 2, ie) == true);
+		BOOST_CHECK(ie.size == 0);
 		BOOST_CHECK(index.find(RANGE_ID, 1, ie) == true);
 		BOOST_CHECK(ie.timeTag.modTime == MOD_TIME);
 	}

@@ -75,6 +75,10 @@ int main(int argc, char *argv[])
 		manager.reset(new Manager(config.get()));
 		if (!manager->loadAll())
 			return -1;
+		if (!manager->clusterManager().startStoragesPinging(cmdWorkerGroup.get()->getThread(0))) {
+			log::Fatal::L("Manager can't start a process of the storages pinging\n");
+			return -1;
+		}
 		
 		ManagerWebDavInterface::setInited(manager.get());
 		setSignals();

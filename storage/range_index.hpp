@@ -28,6 +28,7 @@
 
 namespace fl {
 	namespace metis {
+		namespace storage {
 		using fl::threads::Mutex;
 		using fl::threads::AutoMutex;
 		
@@ -77,6 +78,7 @@ namespace fl {
 			TRangeHash _ranges;
 			Mutex _sync;
 		};
+	};
 	};
 };
 

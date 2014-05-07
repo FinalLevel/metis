@@ -23,9 +23,12 @@
 #include "exception.hpp"
 #include "mutex.hpp"
 #include "read_write_lock.hpp"
+#include "range_index.hpp"
 
 namespace fl {
 	namespace metis {
+		using namespace storage;
+		
 		using fl::fs::File;
 		using fl::strings::BString;
 		using fl::threads::Mutex;
@@ -98,6 +101,7 @@ namespace fl {
 			bool remove(const ItemHeader &ih, const ItemPointer &pointer);
 			bool loadIndex(class Index &index);
 			bool findWriteSlice(const TItemSize size);
+			bool ping(StoragePingAnswer &storageAnswer);
 		private:
 			void _formDataPath(BString &path);
 			void _formIndexPath(BString &path);

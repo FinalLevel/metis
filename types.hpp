@@ -93,6 +93,8 @@ namespace fl {
 			STORAGE_ITEM_INFO,
 			STORAGE_PUT,
 			STORAGE_GET_ITEM_CHUNK,
+			STORAGE_DELETE_ITEM,
+			STORAGE_PING,
 		};
 		
 		struct StorageCmd
@@ -138,6 +140,12 @@ namespace fl {
 			TItemSize chunkSize;
 			TItemSize seek;
 		} __attribute__((packed));
+		
+		struct StoragePingAnswer
+		{
+			TServerID serverID;
+			int64_t leftSpace;
+		} __attribute__((packed));;
 	};
 };
 

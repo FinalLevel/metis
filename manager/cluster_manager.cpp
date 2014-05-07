@@ -10,6 +10,7 @@
 
 #include "cluster_manager.hpp"
 #include "../metis_log.hpp"
+#include "storage_cmd_event.hpp"
 
 using namespace fl::metis;
 
@@ -69,7 +70,7 @@ StorageNode::StorageNode(MysqlResult *res)
 		_ip(Socket::ip2Long(res->get(EStorageFlds::IP))),
 		_port(res->get<decltype(_port)>(EStorageFlds::PORT)),  
 		_status(res->get<decltype(_status)>(EStorageFlds::STATUS)),
-		_weight(rand())
+		_weight(rand()), _leftSpace(0), _errors(0)
 {
 	
 }
@@ -77,6 +78,28 @@ StorageNode::StorageNode(MysqlResult *res)
 bool StorageNode::balanceStorage(StorageNode *a, StorageNode *b)
 {
 	return a->_weight < b->_weight;
+}
+
+void StorageNode::ping(StoragePingAnswer &storageAnswer)
+{
+	_leftSpace = storageAnswer.leftSpace;
+	_errors = 0;
+	if (_status & ST_DOWN) {
+		_status &= (~ST_DOWN);
+		log::Warning::L("Storage %s:%u (%u) is UP\n", Socket::ip2String(_ip).c_str(), _port, _id);
+	}
+}
+
+void StorageNode::error()
+{
+	if (_errors >= MAX_ERRORS_BEFORE_DOWN) {
+		if (!(_status & ST_DOWN)) {
+			_status |= ST_DOWN;
+			log::Warning::L("Storage %s:%u (%u) is DOWN\n", Socket::ip2String(_ip).c_str(), _port, _id);
+		}
+	} else {
+		_errors++;
+	}
 }
 
 bool ClusterManager::_loadStorages(Mysql &sql)
@@ -160,3 +183,21 @@ bool ClusterManager::findFreeStorages(const size_t minimumCopies, TServerIDList 
 	return true;
 }
 
+bool ClusterManager::startStoragesPinging(EPollWorkerThread *thread)
+{
+	_storagesPinging = new StorageCMDPinging(this, thread);
+	return _storagesPinging->start();
+}
+
+TStorageList ClusterManager::storages()
+{
+	TStorageList storagesVector;
+	for (auto s = _storages.begin(); s != _storages.end(); s++)
+		storagesVector.push_back(s->second.get());
+	return storagesVector;
+}
+
+ClusterManager::ClusterManager()
+	: _storagesPinging(NULL)
+{
+}

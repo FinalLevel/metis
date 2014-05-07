@@ -17,6 +17,7 @@
 
 namespace fl {
 	namespace metis {
+		using namespace storage;
 		class Storage
 		{
 		public:
@@ -26,6 +27,7 @@ namespace fl {
 			bool remove(const ItemHeader &itemHeader);
 			bool findAndFill(const ItemIndex &itemIndex, GetItemInfoAnswer &itemInfo);
 			bool get(const GetItemChunkRequest &itemRequest, BString &data);
+			bool ping(StoragePingAnswer &storageAnswer);
 		private:
 			SliceManager _sliceManager;
 			Index _index;

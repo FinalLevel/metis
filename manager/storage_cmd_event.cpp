@@ -15,6 +15,110 @@
 
 using namespace fl::metis;
 
+StorageCMDPinging::StorageCMDPinging(ClusterManager *manager, EPollWorkerThread *thread)
+	: _manager(manager), _thread(thread), _timer(NULL)
+{
+}
+
+StorageCMDPinging::~StorageCMDPinging()
+{
+}
+
+
+void StorageCMDPinging::_fillCMD(StorageCMDEvent *ev)
+{
+	NetworkBuffer &buffer = ev->networkBuffer();
+	buffer.clear();
+	StorageCmd &storageCmd = *(StorageCmd*)buffer.reserveBuffer(sizeof(StorageCmd));
+	storageCmd.cmd = EStorageCMD::STORAGE_PING;
+	TServerID serverID = ev->storage()->id();
+	storageCmd.size = sizeof(serverID);
+	buffer.add((char*)&serverID, sizeof(serverID));
+}
+
+void StorageCMDPinging::ready(class StorageCMDEvent *ev, const StorageAnswer &sa)
+{
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_event == ev) {
+			if (sa.status == EStorageAnswerStatus::STORAGE_ANSWER_OK) {
+				NetworkBuffer &data = ev->networkBuffer();
+				if ((size_t)data.size() >= (sizeof(StorageAnswer) + sizeof(StoragePingAnswer))) {
+					r->_status = sa.status;
+					StoragePingAnswer storageAnswer;
+					memcpy(&storageAnswer, data.c_str() + sizeof(StorageAnswer), sizeof(storageAnswer));
+					ev->storage()->ping(storageAnswer);
+				} else {
+					log::Error::L("Receive a bad storage ping answer - the sizes are mismatch\n");
+					ev->storage()->error();
+				}
+			}
+			else
+				ev->storage()->error();
+			r->_status = sa.status;
+			_thread->addToDeletedNL(r->_event);
+			r->_event = NULL;
+			return;
+		}
+	}
+}
+
+void StorageCMDPinging::repeat(class StorageCMDEvent *ev)
+{
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_event == ev) {
+			ev->storage()->error();
+			r->_status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+			_thread->addToDeletedNL(r->_event);
+			r->_event = NULL;
+			return;
+		}
+	}
+}
+
+void StorageCMDPinging::timerCall(class TimerEvent *te)
+{
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_event) {
+			r->_event->storage()->error();
+			_thread->addToDeletedNL(r->_event);
+		}
+	}
+	_requests.clear();
+	_ping();
+}
+
+void StorageCMDPinging::_ping()
+{
+	TStorageList storages = _manager->storages();
+	for (auto s = storages.begin(); s != storages.end(); s++) {
+		StorageCMDEvent *ev = NULL;
+		EStorageAnswerStatus status = EStorageAnswerStatus::STORAGE_NO_ANSWER;
+		if ((*s)->isActive()) {
+			ev = new StorageCMDEvent(*s, _thread, this);
+			_fillCMD(ev);
+			if (!ev->makeCMD()) {
+				status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+			}
+		}
+		_requests.push_back(StorageRequest(ev, *s, status));
+	}
+}
+bool StorageCMDPinging::start()
+{
+	_ping();
+	if (!_timer) {
+		_timer = new TimerEvent();
+	}
+	static const uint32_t STORAGES_PING_SEC_TIME = 15; // each 15 seconds
+	if (!_timer->setTimer(STORAGES_PING_SEC_TIME, 0, STORAGES_PING_SEC_TIME, 0, this))
+		return false;
+	if (!_thread->ctrl(_timer)) {
+		log::Error::L("StorageCMDPinging: Can't add a timer event to the pool\n");
+		return false;
+	}
+	return true;
+}
+
 StorageCMDGet::StorageCMDGet(const TStorageList &storages, StorageCMDEventPool *pool, const ItemHeader &item, 
 	const TItemSize chunkSize)
 	: _storageEvent(NULL), _pool(pool), _interface(NULL), _storages(storages), _item(item.rangeID, item.itemKey), 
@@ -378,7 +482,8 @@ bool StorageCMDItemInfo::getStoragesAndFillItem(ItemHeader &item, TStorageList &
 				item.timeTag.tag = a->_item.timeTag.tag;
 				item.size = a->_item.size;
 			}
-			storageNodes.push_back(a->_storage);
+			if (item.size > 0)
+				storageNodes.push_back(a->_storage);
 		} else if (a->_status != EStorageAnswerStatus::STORAGE_ANSWER_NOT_FOUND) {
 			isThereErrorStorages = true;
 		}
@@ -492,6 +597,110 @@ StorageCMDItemInfo::~StorageCMDItemInfo()
 		_pool->free(a->_event);
 		a->_event = NULL;
 	}
+}
+
+StorageCMDDeleteItem::StorageCMDDeleteItem(StorageCMDEventPool *pool, const ItemHeader &item)
+	: _pool(pool), _item(item)
+{
+}
+
+StorageCMDDeleteItem::~StorageCMDDeleteItem()
+{
+	for (auto a = _requests.begin(); a != _requests.end(); a++) {
+		if (!a->_event)
+			continue;
+		_pool->free(a->_event);
+		a->_event = NULL;
+	}	
+}
+
+void StorageCMDDeleteItem::_fillCMD(class StorageCMDEvent *storageEvent)
+{
+	NetworkBuffer &buffer = storageEvent->networkBuffer();
+	buffer.clear();
+	StorageCmd &storageCmd = *(StorageCmd*)buffer.reserveBuffer(sizeof(StorageCmd));
+	storageCmd.cmd = EStorageCMD::STORAGE_DELETE_ITEM;
+	storageCmd.size = sizeof(_item);
+	buffer.add((char*)&_item, sizeof(_item));	
+}
+
+void StorageCMDDeleteItem::repeat(class StorageCMDEvent *ev)
+{
+	for (auto a = _requests.begin(); a != _requests.end(); a++) {
+		if (a->_event == ev) {
+			if (a->_reconnects < MAX_STORAGE_RECONNECTS) {
+				a->_reconnects++;
+				ev->reopen();
+				_fillCMD(ev);
+				if (ev->makeCMD())
+					return;
+			}
+			_error(ev);
+			return;
+		}
+	}
+}
+
+void StorageCMDDeleteItem::_error(class StorageCMDEvent *ev)
+{
+	bool isComplete = true;
+	bool haveNormalyFinished = false;
+	for (auto a = _requests.begin(); a != _requests.end(); a++) {
+		if (a->_event == ev) {
+			a->_status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+			_pool->free(a->_event);
+			a->_event = NULL;
+		} else if (a->_event) {
+			isComplete = false;
+		}
+		if (a->_status == EStorageAnswerStatus::STORAGE_ANSWER_OK)
+			haveNormalyFinished = true;
+	}
+	if (isComplete)
+		_interface->deleteItem(this, haveNormalyFinished);
+}
+
+void StorageCMDDeleteItem::ready(class StorageCMDEvent *ev, const StorageAnswer &sa)
+{
+	bool isComplete = true;
+	bool haveNormalyFinished = false;
+	for (auto a = _requests.begin(); a != _requests.end(); a++) {
+		if (a->_event == ev) {
+			a->_status = sa.status;
+			_pool->free(a->_event);
+			a->_event = NULL;
+		} else if (a->_event) {
+			isComplete = false;
+		}
+		if (a->_status == EStorageAnswerStatus::STORAGE_ANSWER_OK)
+			haveNormalyFinished = true;
+	}
+	if (isComplete)
+		_interface->deleteItem(this, haveNormalyFinished);		
+}
+
+
+bool StorageCMDDeleteItem::start(const TStorageList &storages, StorageCMDDeleteItemInterface *interface, 
+	EPollWorkerThread *thread)
+{
+	bool haveActiveRequests = false;
+	for (auto storage = storages.begin(); storage != storages.end(); storage++) {
+		auto storageEvent = _pool->get(*storage, thread, this);
+		if (storageEvent) {
+			_fillCMD(storageEvent);
+			if (storageEvent->makeCMD()) {
+				_requests.push_back(StorageRequest(storageEvent, *storage));
+				haveActiveRequests = true;
+				continue;
+			} else {
+				_pool->free(storageEvent);
+			}
+		}
+		_requests.push_back(StorageRequest(EStorageAnswerStatus::STORAGE_ANSWER_ERROR, *storage));
+	}
+	if (haveActiveRequests)
+		_interface = interface;
+	return haveActiveRequests;
 }
 
 StorageCMDEventPool::~StorageCMDEventPool()

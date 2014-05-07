@@ -27,6 +27,10 @@ namespace fl {
 			{
 				return _indexManager;
 			}
+			ClusterManager &clusterManager()
+			{
+				return _clusterManager;
+			}
 			bool fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded);
 			bool findAndFill(ItemHeader &item, TRangePtr &range);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
