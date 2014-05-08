@@ -20,10 +20,12 @@
 #include "file.hpp"
 #include "timer_event.hpp"
 #include "compatibility.hpp"
+#include "index.hpp"
 
 namespace fl {
 	namespace metis {
 		using namespace fl::events;
+		using namespace manager;
 		using fl::network::NetworkBuffer;
 		using fl::fs::File;
 		
@@ -235,6 +237,54 @@ namespace fl {
 			struct StorageRequest
 			{
 				StorageRequest(StorageCMDEvent *event, StorageNode *storage, const EStorageAnswerStatus status)
+					: _status(status), _event(event), _storage(storage)
+				{
+				}
+				EStorageAnswerStatus _status;
+				StorageCMDEvent *_event;
+				StorageNode *_storage;
+			};
+			typedef std::vector<StorageRequest> TStorageRequestVector;
+			TStorageRequestVector _requests;
+		};
+		
+		class StorageCMDRangeIndexCheck : public BasicStorageCMD, TimerEventInterface
+		{
+		public:
+			StorageCMDRangeIndexCheck(IndexManager *index, EPollWorkerThread *thread);
+			virtual ~StorageCMDRangeIndexCheck();
+			bool start();
+			virtual void ready(class StorageCMDEvent *ev, const StorageAnswer &sa) override;
+			virtual void repeat(class StorageCMDEvent *ev) override;
+			virtual void timerCall(class TimerEvent *te) override;
+		private:
+			void _fillCMD(StorageCMDEvent *ev);
+			bool _setRecheckTimer();
+			void _checkRange();
+			bool _parse(class StorageCMDEvent *ev);
+			IndexManager *_index;
+			EPollWorkerThread *_thread;
+			TimerEvent *_operationTimer;
+			TimerEvent *_recheckTimer;
+			TRangePtrVector _ranges;
+			TRangePtr _currentRange;
+			struct ItemEntry
+			{
+				ItemEntry(const TServerID serverID, const TSize size, const ModTimeTag timeTag)
+					: serverID(serverID), size(size), timeTag(timeTag)
+				{
+				}
+				TServerID serverID;
+				TSize size;
+				ModTimeTag timeTag;
+			};
+			typedef std::vector<ItemEntry> TItemEntryVector;
+			typedef unordered_map<TItemKey, TItemEntryVector> TItemEntryMap;
+			TItemEntryMap _items;
+			
+			struct StorageRequest
+			{
+				StorageRequest(StorageCMDEvent *event, StorageNode *storage, const EStorageAnswerStatus status)
 					: _status(status), _event(event), _storage(storage), _reconnects(0)
 				{
 				}
@@ -246,6 +296,7 @@ namespace fl {
 			typedef std::vector<StorageRequest> TStorageRequestVector;
 			TStorageRequestVector _requests;
 		};
+
 	
 		class StorageCMDEvent : public Event
 		{

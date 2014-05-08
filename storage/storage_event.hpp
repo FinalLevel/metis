@@ -53,6 +53,7 @@ namespace fl {
 			ECallResult _itemGetChunk(const char *data);
 			ECallResult _deleteItem(const char *data);
 			ECallResult _ping(const char *data);
+			ECallResult _getRangeItems(const char *data);
 			static bool _isReady;
 			static class Storage *_storage;
 			static class Config *_config;

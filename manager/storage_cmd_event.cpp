@@ -12,8 +12,195 @@
 #include "network_buffer.hpp"
 #include "metis_log.hpp"
 #include "webdav_interface.hpp"
+#include "buffer.hpp"
 
 using namespace fl::metis;
+using fl::utils::Buffer;
+
+StorageCMDRangeIndexCheck::StorageCMDRangeIndexCheck(IndexManager *index, EPollWorkerThread *thread)
+	: _index(index), _thread(thread), _operationTimer(new TimerEvent()), _recheckTimer(new TimerEvent())
+{
+}
+
+StorageCMDRangeIndexCheck::~StorageCMDRangeIndexCheck()
+{
+}
+
+void StorageCMDRangeIndexCheck::_fillCMD(StorageCMDEvent *ev)
+{
+	NetworkBuffer &buffer = ev->networkBuffer();
+	buffer.clear();
+	StorageCmd &storageCmd = *(StorageCmd*)buffer.reserveBuffer(sizeof(StorageCmd));
+	storageCmd.cmd = EStorageCMD::STORAGE_GET_RANGE_ITEMS;
+	RangeItemsRequest rangeItemRequest;
+	rangeItemRequest.serverID = ev->storage()->id();
+	rangeItemRequest.rangeID = _currentRange->rangeID();
+	storageCmd.size = sizeof(rangeItemRequest);
+	buffer.add((char*)&rangeItemRequest, sizeof(rangeItemRequest));
+}
+
+bool StorageCMDRangeIndexCheck::_parse(class StorageCMDEvent *ev)
+{
+	NetworkBuffer &data = ev->networkBuffer();
+	Buffer dataBuffer(std::move(data));
+	try
+	{
+		dataBuffer.skip(sizeof(StorageAnswer));
+		RangeItemsHeader header;
+		dataBuffer.get(&header, sizeof(header));
+		if (header.rangeID != _currentRange->rangeID()) {
+			log::Error::L("Receive a bad rangeID %u, wait for %u\n", header.rangeID, _currentRange->rangeID());
+			return false;
+		}
+		RangeItemEntry ie;
+		TItemEntryVector emptyVector;
+		for (decltype(header.count) i = 0; i < header.count; i++) {
+			dataBuffer.get(&ie, sizeof(ie));
+			auto itemKey = ie.itemKey;
+			auto res = _items.insert(TItemEntryMap::value_type(itemKey, emptyVector));
+			res.first->second.push_back(ItemEntry(ev->storage()->id(), ie.size, ie.timeTag));
+		}
+		return true;
+	}
+	catch (Buffer::Error &er)
+	{
+		log::Error::L("Receive a bad storage range items answer\n");
+	}
+	return false;
+}
+
+void StorageCMDRangeIndexCheck::ready(class StorageCMDEvent *ev, const StorageAnswer &sa)
+{
+	bool completed = true;
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_event == ev) {
+			if (sa.status == EStorageAnswerStatus::STORAGE_ANSWER_OK) {
+				if (_parse(ev))
+					r->_status = sa.status;
+				else
+					r->_status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+			}
+			else
+				r->_status = sa.status;
+			_thread->addToDeletedNL(r->_event);
+			r->_event = NULL;
+		}
+		if (r->_status == EStorageAnswerStatus::STORAGE_NO_ANSWER)
+			completed = false;
+	}
+	if (completed)
+		timerCall(_operationTimer);
+}
+
+void StorageCMDRangeIndexCheck::repeat(class StorageCMDEvent *ev)
+{
+	bool completed = true;
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_event == ev) {
+			if (r->_reconnects >= MAX_STORAGE_RECONNECTS)
+				return;
+			r->_reconnects++;
+			ev->reopen();
+			_fillCMD(ev);
+			if (ev->makeCMD())
+				return;
+			r->_status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+			_thread->addToDeletedNL(r->_event);
+			r->_event = NULL;
+		}
+		if (r->_status == EStorageAnswerStatus::STORAGE_NO_ANSWER)
+			completed = false;
+	}
+	if (completed)
+		timerCall(_operationTimer);
+}
+
+void StorageCMDRangeIndexCheck::_checkRange()
+{
+	bool isReadyToReplication = true;
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_event) {
+			_thread->addToDeletedNL(r->_event);
+			r->_event = NULL;
+		}
+		if (r->_storage->isActive() && (r->_status != EStorageAnswerStatus::STORAGE_ANSWER_OK)) {
+			isReadyToReplication = false;
+		}
+	}
+	if (isReadyToReplication) {
+		log::Warning::L("Check range %u\n", _currentRange->rangeID());
+	}
+	else {
+		log::Warning::L("Range %u not ready to replication\n", _currentRange->rangeID());
+	}
+	_requests.clear();
+	_items.clear();
+}
+
+void StorageCMDRangeIndexCheck::timerCall(class TimerEvent *te)
+{
+	if (te == _operationTimer) {
+		if (te->descr() == INVALID_EVENT) {
+			log::Warning::L("Received timer call from stopped _operationTimer\n");
+			return;
+		}
+		te->stop();
+		_checkRange();
+		if (_ranges.empty()) { // ranges check finished
+			while (!_setRecheckTimer()) {
+				log::Fatal::L("Can't reset recheck timer\n");
+				sleep(1);
+			}
+			return;
+		}
+	} else if (te == _recheckTimer) {
+		if (te->descr() == INVALID_EVENT) {		
+			log::Warning::L("Received timer call from stopped _recheckTimer\n");
+			return;
+		}
+		_operationTimer->stop();
+		_recheckTimer->stop();
+	} else {
+		log::Error::L("Received an unknown timer call\n");
+		return;
+	}
+	while (!start()) {
+		log::Fatal::L("Can't restart StorageCMDRangeIndexCheck\n");
+		sleep(1);
+	}
+}
+
+bool StorageCMDRangeIndexCheck::_setRecheckTimer()
+{
+	static const uint32_t STORAGES_RECHECK_TIME = 60 * 60; // 1 hour;	
+	if (!_recheckTimer->setTimer(STORAGES_RECHECK_TIME, 0, 0, 0, this))
+		return false;
+	if (!_thread->ctrl(_recheckTimer)) {
+		log::Error::L("StorageCMDRangeIndexCheck: Can't add a timer event to the pool\n");
+		return false;
+	}
+	return true;	
+}
+
+bool StorageCMDRangeIndexCheck::start()
+{
+	if (_ranges.empty()) { // start new range check
+		_ranges = _index->getControlledRanges();
+		if (_ranges.empty())
+			return _setRecheckTimer();
+	}
+	_currentRange = _ranges.back();
+	_ranges.pop_back();
+	
+	static const uint32_t STORAGES_MAXIMUM_WAIT_TIME_SEC_TIME = 5; // 5 seconds	
+	if (!_operationTimer->setTimer(STORAGES_MAXIMUM_WAIT_TIME_SEC_TIME, 0, 0, 0, this))
+		return false;
+	if (!_thread->ctrl(_operationTimer)) {
+		log::Error::L("StorageCMDRangeIndexCheck: Can't add a timer event to the pool\n");
+		return false;
+	}
+	return true;
+}
 
 StorageCMDPinging::StorageCMDPinging(ClusterManager *manager, EPollWorkerThread *thread)
 	: _manager(manager), _thread(thread), _timer(NULL)
@@ -103,6 +290,7 @@ void StorageCMDPinging::_ping()
 		_requests.push_back(StorageRequest(ev, *s, status));
 	}
 }
+
 bool StorageCMDPinging::start()
 {
 	_ping();
@@ -869,7 +1057,7 @@ bool StorageCMDEvent::_read()
 	else if (res == NetworkBuffer::IN_PROGRESS)
 		return true;
 	if ((size_t)_buffer.size() >= sizeof(StorageAnswer)) {
-		StorageAnswer &sa = *(StorageAnswer*)_buffer.c_str();
+		StorageAnswer sa = *(StorageAnswer*)_buffer.c_str();
 		if ((size_t)_buffer.size() >= (sa.size + sizeof(StorageAnswer))) {
 			_cmdReady(sa, _buffer.c_str() + sizeof(StorageAnswer));
 			return true;

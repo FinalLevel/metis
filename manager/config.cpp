@@ -21,7 +21,7 @@ Config::Config(int argc, char *argv[])
 	: GlobalConfig(argc, argv), _serverID(0), _status(0), _logLevel(FL_LOG_LEVEL), _cmdPort(0), _webDavPort(0), 
 	_webPort(0), _cmdTimeout(0), _webTimeout(0), _webDavTimeout(0), _webWorkerQueueLength(0), _webWorkers(0),	
 	_cmdWorkerQueueLength(0), _cmdWorkers(0), _bufferSize(0), _maxFreeBuffers(0), _minimumCopies(0), 
-	_maxConnectionPerStorage(0)
+	_maxConnectionPerStorage(0), _averageItemSize(0)
 {
 	char ch;
 	optind = 1;
@@ -68,6 +68,9 @@ Config::Config(int argc, char *argv[])
 		
 		_maxConnectionPerStorage = _pt.get<decltype(_maxConnectionPerStorage)>("metis-manager.maxConnectionPerStorage", 
 			DEFAULT_MAX_CONNECTION_PER_STORAGE);
+		
+		_averageItemSize = _pt.get<decltype(_averageItemSize)>("metis-manager.averageItemSize", 
+			DEFAULT_AVERAGE_ITEM_SIZE);
 	}
 	catch (ini_parser_error &err)
 	{

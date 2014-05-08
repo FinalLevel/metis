@@ -31,6 +31,8 @@
 	
 namespace fl {
 	namespace metis {
+		class StorageCMDRangeIndexCheck;
+		
 		namespace manager {
 		using fl::db::Mysql;
 		using fl::db::MysqlResult;
@@ -49,6 +51,11 @@ namespace fl {
 			{
 				return _rangeIndex;
 			}
+			TServerID managerID() const
+			{
+				return _managerID;
+			}
+
 			void update(Range *src);
 			TStorageList storages()
 			{
@@ -63,6 +70,7 @@ namespace fl {
 			TStorageList _storages;
 		};
 		typedef std::shared_ptr<Range> TRangePtr;
+		typedef std::vector<TRangePtr> TRangePtrVector;
 		
 		class RangeIndex
 		{
@@ -85,6 +93,10 @@ namespace fl {
 			TItemKey calcRangeIndex(const TItemKey rangeIndex);
 			bool loadRange(TRangePtr &range, const TItemKey rangeIndex, class IndexManager *index, 
 				class ClusterManager &clusterManager, Mysql &sql);
+			TItemKey rangeSize() const
+			{
+				return _rangeSize;
+			}
 		private:
 			TIndexID _id;
 			TStatus _status;
@@ -114,6 +126,8 @@ namespace fl {
 				_addRange(range);
 				_sync.unLock();
 			}
+			TRangePtrVector getControlledRanges();
+			bool startRangesChecking(EPollWorkerThread *thread);
 		private:
 			static uint32_t _curOperation;
 			bool _loadIndex(Mysql &sql);
@@ -133,6 +147,7 @@ namespace fl {
 			Mutex _sync;
 			
 			class Config *_config;
+			class StorageCMDRangeIndexCheck *_rangeIndexCheck;
 		};
 		
 		};

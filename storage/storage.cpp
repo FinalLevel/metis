@@ -96,3 +96,8 @@ bool Storage::ping(StoragePingAnswer &storageAnswer)
 {
 	return _sliceManager.ping(storageAnswer);
 }
+
+bool Storage::getRangeItems(const TRangeID rangeID, BString &data)
+{
+	return _index.getRangeItems(rangeID, data);
+}

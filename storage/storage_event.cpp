@@ -133,6 +133,31 @@ StorageEvent::ECallResult StorageEvent::_deleteItem(const char *data)
 	return _send();
 }
 
+StorageEvent::ECallResult StorageEvent::_getRangeItems(const char *data)
+{
+	if (_cmd.size < sizeof(RangeItemsRequest)) {
+		log::Error::L("StorageEvent::_getRangeItems has received cmd.size < sizeof(RangeItemsRequest)\n");
+		return FINISHED;
+	}
+	RangeItemsRequest request = *(RangeItemsRequest*)data;
+	if (_config->serverID() == request.serverID) {
+		_networkBuffer->clear();
+		_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+		auto currentBufferSize = _networkBuffer->size();
+		if (_storage->getRangeItems(request.rangeID, *_networkBuffer)) {
+			StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->c_str();
+			sa.status = STORAGE_ANSWER_OK;
+			sa.size = _networkBuffer->size() - currentBufferSize;
+			return _send();
+		}
+	}
+	_networkBuffer->clear();
+	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+	sa.status = STORAGE_ANSWER_ERROR;
+	sa.size = 0;
+	return _send();
+}
+
 StorageEvent::ECallResult StorageEvent::_ping(const char *data)
 {
 	if (_cmd.size < sizeof(TServerID)) {
@@ -191,6 +216,8 @@ StorageEvent::ECallResult StorageEvent::_parseCmd(const char *data)
 			return _deleteItem(data);
 		case EStorageCMD::STORAGE_PING:
 			return _ping(data);
+		case EStorageCMD::STORAGE_GET_RANGE_ITEMS:
+			return _getRangeItems(data);
 		case EStorageCMD::STORAGE_NO_CMD:
 			return _nopCmd();
 		case EStorageCMD::STORAGE_PUT: // never come here

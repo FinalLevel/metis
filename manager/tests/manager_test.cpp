@@ -36,6 +36,15 @@ BOOST_AUTO_TEST_CASE (testLevelRangeCreation)
 
 		TRangePtr range;
 		bool wasAdded;
+		auto storages = manager.clusterManager().storages();
+		for (auto s = storages.begin(); s != storages.end(); s++)
+		{
+			StoragePingAnswer storageAnswer;
+			storageAnswer.serverID = (*s)->id();
+			static const size_t DEFAULT_RANGE_SIZE = 320000;
+			storageAnswer.leftSpace = config.config()->averageItemSize() * DEFAULT_RANGE_SIZE * 2;
+			(*s)->ping(storageAnswer);
+		}
 		BOOST_REQUIRE(manager.fillAndAdd(item, range, wasAdded));
 		BOOST_REQUIRE(range->rangeID() == 1);
 		BOOST_REQUIRE(range->rangeIndex() == 0);

@@ -10,6 +10,7 @@
 
 #include <limits>
 #include "range_index.hpp"
+#include "bstring.hpp"
 
 using namespace fl::metis;
 using namespace fl::metis::storage;
@@ -17,6 +18,22 @@ using namespace fl::metis::storage;
 Range::Range()
 	: _minID(std::numeric_limits<decltype(_minID)>::max()), _maxID(0)
 {
+}
+
+bool Range::getItems(const TRangeID rangeID, BString &data)
+{
+	AutoMutex autoSync(&_sync);
+	RangeItemsHeader &header = *(RangeItemsHeader*)data.reserveBuffer(sizeof(RangeItemsHeader));
+	header.rangeID = rangeID;
+	header.count = _items.size();
+	RangeItemEntry itemEntry;
+	for (auto item = _items.begin(); item != _items.end(); item++) {
+		itemEntry.itemKey = item->first;
+		itemEntry.size = item->second.size;
+		itemEntry.timeTag = item->second.timeTag;
+		data.add((char*)&itemEntry, sizeof(itemEntry));
+	}
+	return true;
 }
 
 bool Range::remove(const ItemHeader &itemHeader)
@@ -106,4 +123,15 @@ void Index::addNoLock(const IndexEntry &ie)
 	if (res.second)
 		res.first->second.reset(new Range());
 	res.first->second->addNoLock(ie);
+}
+
+bool Index::getRangeItems(const TRangeID rangeID, BString &data)
+{
+	AutoMutex autoSync(&_sync);
+	auto f = _ranges.find(rangeID);
+	if (f == _ranges.end())
+		return false;
+	TRangePtr rangePtr  = f->second;
+	autoSync.unLock();
+	return rangePtr->getItems(rangeID, data);
 }

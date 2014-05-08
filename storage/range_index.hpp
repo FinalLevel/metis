@@ -25,12 +25,14 @@
 	
 #include "../types.hpp"
 #include "mutex.hpp"
+#include "bstring.hpp"
 
 namespace fl {
 	namespace metis {
 		namespace storage {
 		using fl::threads::Mutex;
 		using fl::threads::AutoMutex;
+		using fl::strings::BString;
 		
 		
 		class Range
@@ -57,6 +59,7 @@ namespace fl {
 			}
 			void addNoLock(const IndexEntry &ie);
 			bool remove(const ItemHeader &itemHeader);
+			bool getItems(const TRangeID rangeID, BString &data);
 		private:
 			TItemKey _minID;
 			TItemKey _maxID;
@@ -73,6 +76,7 @@ namespace fl {
 			void add(const IndexEntry &ie);
 			void addNoLock(const IndexEntry &ie);
 			bool remove(const ItemHeader &itemHeader);
+			bool getRangeItems(const TRangeID rangeID, BString &data);
 		private:
 			typedef unordered_map<TRangeID, TRangePtr> TRangeHash;
 			TRangeHash _ranges;

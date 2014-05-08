@@ -231,4 +231,60 @@ BOOST_AUTO_TEST_CASE (testSliceIndexRebuildFromData)
 		
 }
 
+BOOST_AUTO_TEST_CASE (testGetRangeItems)
+{
+	TestPath testPath("metis_slice");
+	const TItemModTime MOD_TIME = 2;
+	const TRangeID RANGE_ID = 10;
+	File tmpFile;
+	tmpFile.createUnlinkedTmpFile("/tmp");
+	BString data;
+	for (int i = 0; i < 1024; i++)
+		data << (char)('0' + i % 20);
+	BOOST_REQUIRE(tmpFile.write(data.c_str(), data.size()) == (ssize_t)data.size());
+	ItemHeader ih;
+	ih.status = 0;
+	ih.rangeID = RANGE_ID;
+	ih.level = 1;
+	ih.subLevel = 1;
+	ih.itemKey = 1;
+	ih.timeTag.modTime = MOD_TIME;
+	ih.timeTag.op = 2;
+	ih.size = data.size();
+
+	try
+	{
+		Storage storage(testPath.path(), 0.05, 10000);
+		
+		BString buf;
+		tmpFile.seek(0, SEEK_SET);
+		BOOST_REQUIRE(storage.add(ih, tmpFile, buf));
+		ih.itemKey = 2;
+		tmpFile.seek(0, SEEK_SET);
+		BOOST_REQUIRE(storage.add(ih, tmpFile, buf));
+		BOOST_REQUIRE(storage.remove(ih));
+		BString rangeDataStr;
+		BOOST_REQUIRE(storage.getRangeItems(RANGE_ID, rangeDataStr));
+		Buffer rangeData(std::move(rangeDataStr));
+		RangeItemsHeader header;
+		rangeData.get(&header, sizeof(header));
+		BOOST_REQUIRE(header.rangeID == RANGE_ID);
+		BOOST_REQUIRE(header.count == 2);
+		RangeItemEntry item;
+		for (uint32_t c = 0; c < header.count; c++) {
+			rangeData.get(&item, sizeof(item));
+			BOOST_CHECK(item.timeTag.modTime == MOD_TIME);
+			if (item.itemKey == 2) {
+				BOOST_CHECK(item.size == 0);
+			} else {
+				BOOST_CHECK(item.size == (TItemSize)data.size());
+			}	
+		}
+	}
+	catch (...)
+	{
+		BOOST_CHECK_NO_THROW(throw);
+	}		
+}
+
 BOOST_AUTO_TEST_SUITE_END()

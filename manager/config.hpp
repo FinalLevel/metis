@@ -25,6 +25,7 @@ namespace fl {
 		const size_t MAX_BUF_SIZE = 300000;
 		const size_t DEFAULT_MINIMUM_COPIES = 2;
 		const size_t DEFAULT_MAX_CONNECTION_PER_STORAGE = 2;
+		const size_t DEFAULT_AVERAGE_ITEM_SIZE = 32000;
 		
 		class Config : public GlobalConfig
 		{
@@ -101,6 +102,10 @@ namespace fl {
 			{
 				return _maxConnectionPerStorage;
 			}
+			size_t averageItemSize() const
+			{
+				return _averageItemSize;
+			}
 		private:
 			void _usage();
 			void _loadFromDB();
@@ -136,6 +141,8 @@ namespace fl {
 			
 			size_t _minimumCopies;
 			size_t _maxConnectionPerStorage;
+			
+			size_t _averageItemSize;
 		};
 	}
 }

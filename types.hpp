@@ -95,6 +95,7 @@ namespace fl {
 			STORAGE_GET_ITEM_CHUNK,
 			STORAGE_DELETE_ITEM,
 			STORAGE_PING,
+			STORAGE_GET_RANGE_ITEMS,
 		};
 		
 		struct StorageCmd
@@ -145,7 +146,26 @@ namespace fl {
 		{
 			TServerID serverID;
 			int64_t leftSpace;
-		} __attribute__((packed));;
+		} __attribute__((packed));
+		
+		struct RangeItemsRequest
+		{
+			TServerID serverID;
+			TRangeID rangeID;
+		}__attribute__((packed));
+		
+		struct RangeItemsHeader
+		{
+			TRangeID rangeID;
+			uint32_t count;
+		} __attribute__((packed));
+		
+		struct RangeItemEntry
+		{
+			TItemKey itemKey;
+			TSize size;
+			ModTimeTag timeTag;
+		} __attribute__((packed));
 	};
 };
 

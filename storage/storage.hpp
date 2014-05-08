@@ -28,6 +28,7 @@ namespace fl {
 			bool findAndFill(const ItemIndex &itemIndex, GetItemInfoAnswer &itemInfo);
 			bool get(const GetItemChunkRequest &itemRequest, BString &data);
 			bool ping(StoragePingAnswer &storageAnswer);
+			bool getRangeItems(const TRangeID rangeID, BString &data);
 		private:
 			SliceManager _sliceManager;
 			Index _index;

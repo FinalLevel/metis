@@ -80,6 +80,15 @@ bool StorageNode::balanceStorage(StorageNode *a, StorageNode *b)
 	return a->_weight < b->_weight;
 }
 
+bool StorageNode::canPut(const TSize size) const
+{
+	if ((_status & (ST_ACTIVE | ST_CAN_PUT | ST_DOWN)) == (ST_ACTIVE | ST_CAN_PUT))
+		return (size < _leftSpace);
+	else
+		return false;
+}
+
+
 void StorageNode::ping(StoragePingAnswer &storageAnswer)
 {
 	_leftSpace = storageAnswer.leftSpace;
@@ -155,12 +164,12 @@ TServerID ClusterManager::findFreeManager()
 	return managers[rand() % managers.size()]->id();
 }
 
-bool ClusterManager::findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs)
+bool ClusterManager::findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs, const int64_t minLeftSpace)
 {
 	AutoMutex autoSync(&_sync);
 	TStorageList freeStorages;
 	for (auto storage = _storages.begin(); storage != _storages.end(); storage++) {
-		if (storage->second->isFree()) {
+		if (storage->second->canPut(minLeftSpace)) {
 			bool newGroup = true;
 			for (auto freeStorage = freeStorages.begin(); freeStorage != freeStorages.end(); freeStorage++) {
 				if ((*freeStorage)->groupID() == storage->second->groupID()) {

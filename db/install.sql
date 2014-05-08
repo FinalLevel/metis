@@ -9,7 +9,7 @@ CREATE TABLE `storage` (
   `groupID` int(255) unsigned NOT NULL,
   `ip` varchar(16) NOT NULL DEFAULT '',
   `port` smallint(5) unsigned NOT NULL,
-  `status` int(10) unsigned NOT NULL,
+  `status` int(10) unsigned NOT NULL DEFAULT 3,
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 

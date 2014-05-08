@@ -60,10 +60,6 @@ namespace fl {
 			{
 				return _groupID;
 			}
-			const bool isFree() const
-			{
-				return true;
-			}
 			const TIPv4 ip() const
 			{
 				return _ip;
@@ -73,12 +69,13 @@ namespace fl {
 				return _port;
 			}
 			static bool balanceStorage(StorageNode *a, StorageNode *b);
-			bool canPut(const TSize size)
-			{
-				return true;
-			}
-			static const TStorageStatus ST_ACTIVE = 0x1;
-			static const TStorageStatus ST_DOWN		= 0x2;
+			bool canPut(const TSize size) const;
+			
+			static const TStorageStatus ST_ACTIVE	= 0x1;
+			static const TStorageStatus ST_CAN_PUT = 0x2;
+			// internal statuses
+			static const TStorageStatus ST_DOWN	= 0x80;
+			 
 			bool isActive() const
 			{
 				return (_status & ST_ACTIVE);
@@ -106,7 +103,7 @@ namespace fl {
 		public:
 			ClusterManager();
 			bool loadAll(Mysql &sql);
-			bool findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs);
+			bool findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs, const int64_t minLeftSpace);
 			TServerID findFreeManager();
 			void findStorages(TServerIDList &storageIds, TStorageList &storages);
 			bool startStoragesPinging(EPollWorkerThread *thread);

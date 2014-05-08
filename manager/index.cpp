@@ -15,6 +15,7 @@
 #include "cluster_manager.hpp"
 #include "event_thread.hpp"
 #include "time.hpp"
+#include "storage_cmd_event.hpp"
 
 using namespace fl::metis;
 using namespace fl::metis::manager;
@@ -127,7 +128,7 @@ void RangeIndex::update(RangeIndex *src)
 }
 
 IndexManager::IndexManager(class Config *config)
-	: _config(config)
+	: _config(config), _rangeIndexCheck(NULL)
 {
 }
 
@@ -288,8 +289,10 @@ bool IndexManager::fillAndAdd(ItemHeader &item, TRangePtr &range, ClusterManager
 			log::Error::L("RangeIndex::fillAndAdd: Cannot connect to db, check db parameters\n");
 			return false;
 		}
+		int64_t minLeftSpace = rangesIndex->rangeSize() * _config->averageItemSize();
+		
 		TServerIDList storageIDs;
-		if (!clusterManager.findFreeStorages(_config->minimumCopies(), storageIDs)) {
+		if (!clusterManager.findFreeStorages(_config->minimumCopies(), storageIDs, minLeftSpace)) {
 			log::Error::L("RangeIndex::fillAndAdd: Cannot find free storages for a new range\n");
 			return false;
 		}
@@ -377,3 +380,20 @@ bool IndexManager::getPutStorages(const TRangeID rangeID, const TSize size, clas
 	return range->getPutStorages(size, _config, clusterManager, storages, wasAdded);
 }
 
+TRangePtrVector IndexManager::getControlledRanges()
+{
+	TRangePtrVector ranges;
+	TServerID managerID = _config->serverID();
+	AutoMutex autoSync(&_sync);
+	for (auto r = _ranges.begin(); r != _ranges.end(); r++) {
+		if (r->second->managerID() == managerID)
+			ranges.push_back(r->second);
+	}
+	return ranges;
+}
+
+bool IndexManager::startRangesChecking(EPollWorkerThread *thread)
+{
+	_rangeIndexCheck = new StorageCMDRangeIndexCheck(this, thread);
+	return _rangeIndexCheck->start();
+}

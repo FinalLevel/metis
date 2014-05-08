@@ -82,9 +82,9 @@ webDavPort=12005,webIp='127.0.0.1',webPort=12006, status=1;\n";
 	sqlQuery << "INSERT INTO storage_group SET id=2,name='virtual2';\n";
 	sqlQuery << "INSERT INTO storage_group SET id=3,name='virtual3';\n";
 	
-	sqlQuery << "INSERT INTO storage SET id=1,groupID=1,ip='127.0.0.1',port=12007,status=1;\n";
-	sqlQuery << "INSERT INTO storage SET id=2,groupID=2,ip='127.0.0.1',port=12008,status=1;\n";
-	sqlQuery << "INSERT INTO storage SET id=3,groupID=3,ip='127.0.0.1',port=12009,status=1;\n";
+	sqlQuery << "INSERT INTO storage SET id=1,groupID=1,ip='127.0.0.1',port=12007;\n";
+	sqlQuery << "INSERT INTO storage SET id=2,groupID=2,ip='127.0.0.1',port=12008;\n";
+	sqlQuery << "INSERT INTO storage SET id=3,groupID=3,ip='127.0.0.1',port=12009;\n";
 
 	if (!sql.execute(sqlQuery))
 		return false;

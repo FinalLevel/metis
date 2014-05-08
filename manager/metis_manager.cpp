@@ -79,6 +79,10 @@ int main(int argc, char *argv[])
 			log::Fatal::L("Manager can't start a process of the storages pinging\n");
 			return -1;
 		}
+		if (!manager->index().startRangesChecking(cmdWorkerGroup.get()->getThread(1 % config->cmdWorkers()))) {
+			log::Fatal::L("Manager can't start a process of the ranges checking\n");
+			return -1;
+		}
 		
 		ManagerWebDavInterface::setInited(manager.get());
 		setSignals();
