@@ -251,7 +251,7 @@ namespace fl {
 		class StorageCMDRangeIndexCheck : public BasicStorageCMD, TimerEventInterface
 		{
 		public:
-			StorageCMDRangeIndexCheck(IndexManager *index, EPollWorkerThread *thread);
+			StorageCMDRangeIndexCheck(class Manager *manager, EPollWorkerThread *thread);
 			virtual ~StorageCMDRangeIndexCheck();
 			bool start();
 			virtual void ready(class StorageCMDEvent *ev, const StorageAnswer &sa) override;
@@ -261,8 +261,9 @@ namespace fl {
 			void _fillCMD(StorageCMDEvent *ev);
 			bool _setRecheckTimer();
 			void _checkRange();
+			void _checkItems();
 			bool _parse(class StorageCMDEvent *ev);
-			IndexManager *_index;
+			class Manager *_manager;
 			EPollWorkerThread *_thread;
 			TimerEvent *_operationTimer;
 			TimerEvent *_recheckTimer;
@@ -270,11 +271,11 @@ namespace fl {
 			TRangePtr _currentRange;
 			struct ItemEntry
 			{
-				ItemEntry(const TServerID serverID, const TSize size, const ModTimeTag timeTag)
-					: serverID(serverID), size(size), timeTag(timeTag)
+				ItemEntry(StorageNode *storage, const TSize size, const ModTimeTag timeTag)
+					: storage(storage), size(size), timeTag(timeTag)
 				{
 				}
-				TServerID serverID;
+				StorageNode *storage;
 				TSize size;
 				ModTimeTag timeTag;
 			};
@@ -295,6 +296,9 @@ namespace fl {
 			};
 			typedef std::vector<StorageRequest> TStorageRequestVector;
 			TStorageRequestVector _requests;
+			
+			typedef std::vector<IndexSyncEntry> TIndexSyncEntryVector;
+			typedef std::map<StorageNode*, TIndexSyncEntryVector> TStorageSyncMap;
 		};
 
 	

@@ -31,8 +31,6 @@
 	
 namespace fl {
 	namespace metis {
-		class StorageCMDRangeIndexCheck;
-		
 		namespace manager {
 		using fl::db::Mysql;
 		using fl::db::MysqlResult;
@@ -42,7 +40,7 @@ namespace fl {
 		class Range
 		{
 		public:
-			Range(MysqlResult *res, ClusterManager &clusterManager);
+			Range(class RangeIndex *parent, MysqlResult *res, ClusterManager &clusterManager);
 			TRangeID rangeID() const
 			{
 				return _rangeID;
@@ -63,7 +61,15 @@ namespace fl {
 			}
 			bool getPutStorages(const TSize size, Config *config, class ClusterManager &clusterManager, 
 				TStorageList &storages, bool &wasAdded);
+			StorageNode *getStorageForCopy(const TSize size, Config *config, class ClusterManager &clusterManager, 
+	TStorageList &storages, bool &wasAdded);
+			
+			TLevel level() const;
+			TSubLevel subLevel() const;
 		private:
+			StorageNode *_addNewNode(Config *config, class ClusterManager &clusterManager, const TSize size, 
+	TStorageList &storages);
+			class RangeIndex *_parent;
 			TRangeID _rangeID;
 			TItemKey _rangeIndex;
 			TServerID _managerID;
@@ -97,7 +103,18 @@ namespace fl {
 			{
 				return _rangeSize;
 			}
+			TLevel level() const
+			{
+				return _level;
+			}
+			TSubLevel subLevel() const
+			{
+				return _subLevel;
+			}
 		private:
+			TLevel _level; 
+			TSubLevel _subLevel;
+
 			TIndexID _id;
 			TStatus _status;
 			typedef unordered_map<TItemKey, TRangePtr> TRangeMap;
@@ -119,6 +136,8 @@ namespace fl {
 			bool loadLevel(const TLevel level, const TSubLevel subLevel, Mysql &sql);
 			bool getPutStorages(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager, 
 				TStorageList &storages, bool &wasAdded);
+			StorageNode *getStorageForCopy(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager, 
+				TStorageList &storages, bool &wasAdded);
 			static ModTimeTag genNewTimeTag();
 			void addRange(TRangePtr &range)
 			{
@@ -127,12 +146,11 @@ namespace fl {
 				_sync.unLock();
 			}
 			TRangePtrVector getControlledRanges();
-			bool startRangesChecking(EPollWorkerThread *thread);
 		private:
 			static uint32_t _curOperation;
 			bool _loadIndex(Mysql &sql);
-			bool _loadIndexRanges(Mysql &sql, class ClusterManager &clusterManager);
-			void _add(const TLevel level, const TSubLevel sublevel, TRangeIndexPtr &rangeIndex);
+			bool _loadIndexRanges(Mysql &sql, ClusterManager &clusterManager);
+			void _add(TRangeIndexPtr &rangeIndex);
 			
 			typedef unordered_map<TSubLevel, TRangeIndexPtr> TSubLevelMap;
 			typedef unordered_map<TLevel, TSubLevelMap> TLevelMap;
@@ -147,7 +165,6 @@ namespace fl {
 			Mutex _sync;
 			
 			class Config *_config;
-			class StorageCMDRangeIndexCheck *_rangeIndexCheck;
 		};
 		
 		};

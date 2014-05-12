@@ -10,11 +10,12 @@
 
 #include "manager.hpp"
 #include "metis_log.hpp"
+#include "storage_cmd_event.hpp"
 
 using namespace fl::metis;
 
 Manager::Manager(Config* config)
-	: _config(config), _indexManager(config)
+	: _config(config), _indexManager(config), _rangeIndexCheck(NULL)
 {
 	
 }
@@ -58,6 +59,18 @@ bool Manager::fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded)
 	return true;
 }
 
+
+class StorageNode *Manager::getStorageForCopy(const TRangeID rangeID, const TSize size, TStorageList &storages)
+{
+	bool wasAdded = false;
+	auto storage = _indexManager.getStorageForCopy(rangeID, size, _clusterManager, storages, wasAdded);
+	if (!storage)
+		return NULL;
+	
+	return storage;
+
+}
+
 bool Manager::getPutStorages(const TRangeID rangeID, const TSize size, TStorageList &storages)
 {
 	bool wasAdded = false;
@@ -66,3 +79,10 @@ bool Manager::getPutStorages(const TRangeID rangeID, const TSize size, TStorageL
 	
 	return true;
 }
+
+bool Manager::startRangesChecking(EPollWorkerThread *thread)
+{
+	_rangeIndexCheck = new StorageCMDRangeIndexCheck(this, thread);
+	return _rangeIndexCheck->start();
+}
+

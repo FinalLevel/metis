@@ -166,6 +166,12 @@ namespace fl {
 			TSize size;
 			ModTimeTag timeTag;
 		} __attribute__((packed));
+		
+		struct IndexSyncEntry
+		{
+			ItemHeader header;
+			TServerID fromServer;
+		} __attribute__((packed));
 	};
 };
 

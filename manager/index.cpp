@@ -37,8 +37,9 @@ namespace EIndexRangeFlds
 
 const char * const INDEX_RANGE_SQL = "SELECT id, indexID, rangeIndex, managerID, storageIDs FROM index_range";
 
-Range::Range(MysqlResult *res, ClusterManager &clusterManager)
-	: _rangeID(res->get<decltype(_rangeID)>(EIndexRangeFlds::ID)), 
+Range::Range(class RangeIndex *parent, MysqlResult *res, ClusterManager &clusterManager)
+	: _parent(parent),
+		_rangeID(res->get<decltype(_rangeID)>(EIndexRangeFlds::ID)), 
 		_rangeIndex(res->get<decltype(_rangeIndex)>(EIndexRangeFlds::RANGE_INDEX)), 
 		_managerID(res->get<decltype(_managerID)>(EIndexRangeFlds::MANAGERID))
 {
@@ -48,9 +49,72 @@ Range::Range(MysqlResult *res, ClusterManager &clusterManager)
 	}
 }
 
+TLevel Range::level() const
+{
+	return _parent->level();
+}
+
+TSubLevel  Range::subLevel() const
+{
+	return _parent->subLevel();
+}
+
 void Range::update(Range *src)
 {
 	_managerID = src->_managerID;
+	std::swap(_storages, src->_storages);
+}
+
+StorageNode *Range::getStorageForCopy(const TSize size, Config *config, class ClusterManager &clusterManager, 
+	TStorageList &storages, bool &wasAdded)
+{
+	for (auto s = _storages.begin(); s != _storages.end(); s++) {
+		if ((*s)->canPut(size)) {
+			bool found = false;
+			for (auto existsStorage = storages.begin(); existsStorage != storages.end(); existsStorage++) {
+				if ((*existsStorage)->groupID() == (*s)->groupID()) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {	
+				return (*s);
+			}
+		}
+	}
+	wasAdded = true;
+	return _addNewNode(config, clusterManager, size, storages);
+}
+
+StorageNode *Range::_addNewNode(Config *config, class ClusterManager &clusterManager, const TSize size, 
+	TStorageList &storages)
+{
+	StorageNode *newNode = clusterManager.findFreeStorage(size, storages);
+	if (!newNode)
+		return NULL;
+	Mysql sql;
+	if (!config->connectDb(sql)) {
+		log::Error::L("Range::_addNewNode: Cannot connect to db, check db parameters\n");
+		return false;
+	}
+	auto sqlBuf = sql.createQuery();
+	sqlBuf << "UPDATE index_range SET storageIDs='";
+	for (auto s = _storages.begin(); s != _storages.end(); s++) {
+		sqlBuf << (*s)->id() << ","; 
+	}
+	sqlBuf << newNode->id() << "' WHERE id=" << _rangeID << " AND storageIDs='";
+	for (auto s = _storages.begin(); s != _storages.end(); s++) {
+		sqlBuf << (*s)->id() << ","; 
+	}
+	if (!_storages.empty())
+		sqlBuf.trimLast();
+	sqlBuf << '\'';
+	if (!sql.execute(sqlBuf) && !sql.affectedRows())
+		return NULL;
+	
+	_storages.push_back(newNode);
+	
+	return newNode;
 }
 
 bool Range::getPutStorages(const TSize size, Config *config, class ClusterManager &clusterManager, 
@@ -72,8 +136,14 @@ bool Range::getPutStorages(const TSize size, Config *config, class ClusterManage
 			}
 		}
 	}
-	//TODO: Add new storage
-	return ! storages.empty();
+	StorageNode *newNode = _addNewNode(config, clusterManager, size, storages);
+	if (newNode) {
+		wasAdded = true;
+		storages.push_back(newNode);
+		return true;
+	} else {
+		return false;
+	}
 }
 
 namespace EIndexFlds
@@ -91,7 +161,9 @@ const char * const INDEX_SQL = "SELECT id, level, subLevel, status, rangeSize FR
 
 
 RangeIndex::RangeIndex(MysqlResult *res)
-	: _id(res->get<decltype(_id)>(EIndexFlds::ID)), 
+	: _level(res->get<decltype(_level)>(EIndexFlds::LEVEL)), 
+		_subLevel(res->get<decltype(_subLevel)>(EIndexFlds::SUBLEVEL)), 
+		_id(res->get<decltype(_id)>(EIndexFlds::ID)), 
 		_status(res->get<decltype(_status)>(EIndexFlds::STATUS)),
 		_rangeSize(res->get<decltype(_rangeSize)>(EIndexFlds::RANGE_SIZE))
 {
@@ -128,7 +200,7 @@ void RangeIndex::update(RangeIndex *src)
 }
 
 IndexManager::IndexManager(class Config *config)
-	: _config(config), _rangeIndexCheck(NULL)
+	: _config(config)
 {
 }
 
@@ -141,7 +213,7 @@ bool IndexManager::_loadIndex(Mysql &sql)
 	}
 	while (res->next()) {
 		TRangeIndexPtr rangeIndex( new RangeIndex(res.get()));
-		_add(res->get<TLevel>(EIndexFlds::LEVEL), res->get<TSubLevel>(EIndexFlds::SUBLEVEL), rangeIndex);
+		_add(rangeIndex);
 	}
 	log::Info::L("Load %u indexes\n", _indexRanges.size());
 	return true;	
@@ -168,7 +240,7 @@ bool IndexManager::_loadIndexRanges(Mysql &sql, ClusterManager &clusterManager)
 			continue;
 		}
 		c++;
-		TRangePtr range(new Range(res.get(), clusterManager));
+		TRangePtr range(new Range(f->second.get(), res.get(), clusterManager));
 		f->second->addNL(range);
 		_addRange(range);
 	}
@@ -176,11 +248,11 @@ bool IndexManager::_loadIndexRanges(Mysql &sql, ClusterManager &clusterManager)
 	return true;
 }
 
-void IndexManager::_add(const TLevel level, const TSubLevel sublevel, TRangeIndexPtr &rangeIndex)
+void IndexManager::_add(TRangeIndexPtr &rangeIndex)
 {
 	static TSubLevelMap empty;
-	auto res = _index.emplace(level, empty);
-	auto sublevelRes = res.first->second.emplace(sublevel, rangeIndex);
+	auto res = _index.emplace(rangeIndex->level(), empty);
+	auto sublevelRes = res.first->second.emplace(rangeIndex->subLevel(), rangeIndex);
 	if (!sublevelRes.second)
 		sublevelRes.first->second->update(rangeIndex.get());
 	
@@ -235,7 +307,7 @@ bool RangeIndex::loadRange(TRangePtr &range, const TItemKey rangeIndex, IndexMan
 		log::Error::L("Cannot load information about index ranges\n");
 		return false;
 	}
-	range.reset(new Range(res.get(), clusterManager));
+	range.reset(new Range(this, res.get(), clusterManager));
 	add(range);
 	index->addRange(range);
 	return true;
@@ -360,8 +432,24 @@ bool IndexManager::loadLevel(const TLevel level, const TSubLevel subLevel, Mysql
 	}
 	AutoMutex autoSync(&_sync);
 	TRangeIndexPtr rangeIndex(new RangeIndex(res.get()));
-	_add(level, subLevel, rangeIndex);
+	_add(rangeIndex);
 	return true;
+}
+
+StorageNode *IndexManager::getStorageForCopy(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager, 
+	TStorageList &storages, bool &wasAdded)
+{
+	wasAdded = false;
+	TRangePtr range;
+	AutoMutex autoSync(&_sync);
+	auto f = _ranges.find(rangeID);
+	if (f == _ranges.end()) {
+		log::Fatal::L("Try find put storage for unknown rangeID %u\n", rangeID);
+		return NULL;
+	}
+	range = f->second;
+	autoSync.unLock();
+	return range->getStorageForCopy(size, _config, clusterManager, storages, wasAdded);
 }
 
 bool IndexManager::getPutStorages(const TRangeID rangeID, const TSize size, class ClusterManager &clusterManager,
@@ -390,10 +478,4 @@ TRangePtrVector IndexManager::getControlledRanges()
 			ranges.push_back(r->second);
 	}
 	return ranges;
-}
-
-bool IndexManager::startRangesChecking(EPollWorkerThread *thread)
-{
-	_rangeIndexCheck = new StorageCMDRangeIndexCheck(this, thread);
-	return _rangeIndexCheck->start();
 }

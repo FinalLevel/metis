@@ -8,6 +8,7 @@
 // Description: Metis cluster control class implementation
 ///////////////////////////////////////////////////////////////////////////////
 
+
 #include "cluster_manager.hpp"
 #include "../metis_log.hpp"
 #include "storage_cmd_event.hpp"
@@ -70,7 +71,7 @@ StorageNode::StorageNode(MysqlResult *res)
 		_ip(Socket::ip2Long(res->get(EStorageFlds::IP))),
 		_port(res->get<decltype(_port)>(EStorageFlds::PORT)),  
 		_status(res->get<decltype(_status)>(EStorageFlds::STATUS)),
-		_weight(rand()), _leftSpace(0), _errors(0)
+		_weight(rand()), _leftSpace(0), _errors(0), _lastPingTime(0)
 {
 	
 }
@@ -97,6 +98,7 @@ void StorageNode::ping(StoragePingAnswer &storageAnswer)
 		_status &= (~ST_DOWN);
 		log::Warning::L("Storage %s:%u (%u) is UP\n", Socket::ip2String(_ip).c_str(), _port, _id);
 	}
+	_lastPingTime = EPollWorkerGroup::curTime.unix();
 }
 
 void StorageNode::error()
@@ -164,6 +166,40 @@ TServerID ClusterManager::findFreeManager()
 	return managers[rand() % managers.size()]->id();
 }
 
+
+StorageNode *ClusterManager::findFreeStorage(const int64_t minLeftSpace, TStorageList &storages)
+{
+	AutoMutex autoSync(&_sync);
+	TStorageList freeStorages;
+	for (auto storage = _storages.begin(); storage != _storages.end(); storage++) {
+		if (storage->second->canPut(minLeftSpace)) {
+			bool newGroup = true;
+			for (auto existsStorage = storages.begin(); existsStorage != storages.end(); existsStorage++) {
+				if ((*existsStorage)->groupID() == storage->second->groupID()) {
+					newGroup = false;
+					break;
+				}
+			}
+			if (!newGroup)
+				continue;
+			
+			newGroup = true;
+			for (auto freeStorage = freeStorages.begin(); freeStorage != freeStorages.end(); freeStorage++) {
+				if ((*freeStorage)->groupID() == storage->second->groupID()) {
+					newGroup = false;
+					break;
+				}
+			}
+			if (newGroup)
+				freeStorages.push_back(storage->second.get());
+		}
+	}
+	if (freeStorages.empty())
+		return NULL;
+	std::sort(freeStorages.begin(), freeStorages.end(), StorageNode::balanceStorage); 
+	return freeStorages.front();
+}
+
 bool ClusterManager::findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs, const int64_t minLeftSpace)
 {
 	AutoMutex autoSync(&_sync);
@@ -210,3 +246,16 @@ ClusterManager::ClusterManager()
 	: _storagesPinging(NULL)
 {
 }
+
+bool ClusterManager::isReady()
+{
+	static const uint32_t PING_EXPERIES_TIME = 15;
+	auto lastPingTime = EPollWorkerGroup::curTime.unix() - PING_EXPERIES_TIME;
+	for (auto s = _storages.begin(); s != _storages.end(); s++) {
+		if (!s->second->isPinged(lastPingTime)) {
+			return false;
+		}
+	}
+	return true;
+}
+

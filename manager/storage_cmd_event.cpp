@@ -13,12 +13,13 @@
 #include "metis_log.hpp"
 #include "webdav_interface.hpp"
 #include "buffer.hpp"
+#include "manager.hpp"
 
 using namespace fl::metis;
 using fl::utils::Buffer;
 
-StorageCMDRangeIndexCheck::StorageCMDRangeIndexCheck(IndexManager *index, EPollWorkerThread *thread)
-	: _index(index), _thread(thread), _operationTimer(new TimerEvent()), _recheckTimer(new TimerEvent())
+StorageCMDRangeIndexCheck::StorageCMDRangeIndexCheck(Manager *manager, EPollWorkerThread *thread)
+	: _manager(manager), _thread(thread), _operationTimer(new TimerEvent()), _recheckTimer(new TimerEvent())
 {
 }
 
@@ -58,7 +59,7 @@ bool StorageCMDRangeIndexCheck::_parse(class StorageCMDEvent *ev)
 			dataBuffer.get(&ie, sizeof(ie));
 			auto itemKey = ie.itemKey;
 			auto res = _items.insert(TItemEntryMap::value_type(itemKey, emptyVector));
-			res.first->second.push_back(ItemEntry(ev->storage()->id(), ie.size, ie.timeTag));
+			res.first->second.push_back(ItemEntry(ev->storage(), ie.size, ie.timeTag));
 		}
 		return true;
 	}
@@ -115,6 +116,95 @@ void StorageCMDRangeIndexCheck::repeat(class StorageCMDEvent *ev)
 		timerCall(_operationTimer);
 }
 
+
+void StorageCMDRangeIndexCheck::_checkItems()
+{
+	log::Warning::L("Check range %u (items: %u, servers: %u)\n", _currentRange->rangeID(), _items.size(), 
+		_requests.size());
+	
+	IndexSyncEntry syncEntry;
+	bzero(&syncEntry, sizeof(syncEntry));
+	syncEntry.header.rangeID = _currentRange->rangeID();
+	syncEntry.header.level = _currentRange->level();
+	syncEntry.header.subLevel = _currentRange->subLevel();
+		
+	static TIndexSyncEntryVector emptySyncVector;
+	TStorageSyncMap syncs;
+
+	for (auto item = _items.begin(); item != _items.end(); item++) {
+		TSize size = 0;
+		ModTimeTag timeTag;
+		timeTag.tag = 0;
+		TStorageList storages;
+		for (auto itemEntry = item->second.begin();  itemEntry != item->second.end();  itemEntry++) {
+			if (itemEntry->timeTag.tag > timeTag.tag) {
+				timeTag = itemEntry->timeTag;
+				size = itemEntry->size;
+				storages.clear();
+				if (size > 0) {
+					storages.push_back(itemEntry->storage);
+				}
+			} else if (itemEntry->timeTag.tag == timeTag.tag) {
+				if (size != itemEntry->size) {
+					log::Error::L("Item %u/%u has different size on storage %u\n", item->first, _currentRange->rangeID(), 
+						itemEntry->storage->id());
+				} else {
+					storages.push_back(itemEntry->storage);
+				}
+			}
+		}
+		syncEntry.header.itemKey = item->first;
+	
+		if (storages.size() != item->second.size()) { // need clear old or repeat delete command
+			for (auto itemEntry = item->second.begin();  itemEntry != item->second.end();  itemEntry++) {
+				if (itemEntry->timeTag.tag < timeTag.tag) {
+					syncEntry.header.size = 0;
+					syncEntry.fromServer = 0;
+					if (size == 0) { // need delete
+						log::Info::L("Delete Item %u/%u from %u\n", item->first, _currentRange->rangeID(), 
+							itemEntry->storage->id());
+						
+						syncEntry.header.timeTag = timeTag;
+					} else { // need update
+						syncEntry.header.timeTag = itemEntry->timeTag;
+						syncEntry.header.timeTag.op++;
+						if (itemEntry->timeTag.tag >= timeTag.tag)
+							continue;
+						log::Info::L("Replace Item %u/%u from %u\n", item->first, _currentRange->rangeID(), 
+							itemEntry->storage->id());
+					}
+					auto res = syncs.insert(TStorageSyncMap::value_type(itemEntry->storage, emptySyncVector));
+					res.first->second.push_back(syncEntry);
+
+				}
+			}
+		}
+		if (storages.empty()) {
+			log::Info::L("Item %u/%u doesn't have active copies\n", item->first, _currentRange->rangeID());
+			continue;
+		}
+			
+		if ((size > 0) && (storages.size() < _manager->config()->minimumCopies())) { // Item is not deleted and need more copies
+			log::Info::L("Item %u/%u has only %u copies, but needs %u\n", item->first, _currentRange->rangeID(), 
+				storages.size(), _manager->config()->minimumCopies());
+			StorageNode *copyStorage = _manager->getStorageForCopy(_currentRange->rangeID(), size, storages);
+			if (copyStorage) {
+				syncEntry.fromServer = storages[rand() % storages.size()]->id();
+				log::Info::L("Item %u/%u has found storage %u for copying from %u\n", item->first, _currentRange->rangeID(), 
+					copyStorage->id(), syncEntry.fromServer);
+				
+				syncEntry.header.size = size;
+				syncEntry.header.timeTag = timeTag;
+				auto res = syncs.insert(TStorageSyncMap::value_type(copyStorage, emptySyncVector));
+				res.first->second.push_back(syncEntry);
+			} else {
+				log::Error::L("Item %u/%u can't find storage for copying\n", item->first, _currentRange->rangeID());
+			}
+		}
+	}
+	
+}
+
 void StorageCMDRangeIndexCheck::_checkRange()
 {
 	bool isReadyToReplication = true;
@@ -123,12 +213,13 @@ void StorageCMDRangeIndexCheck::_checkRange()
 			_thread->addToDeletedNL(r->_event);
 			r->_event = NULL;
 		}
-		if (r->_storage->isActive() && (r->_status != EStorageAnswerStatus::STORAGE_ANSWER_OK)) {
+		if (r->_storage->isActive() && (r->_status != EStorageAnswerStatus::STORAGE_ANSWER_OK) && 
+			(r->_status != EStorageAnswerStatus::STORAGE_ANSWER_NOT_FOUND)) {
 			isReadyToReplication = false;
 		}
 	}
 	if (isReadyToReplication) {
-		log::Warning::L("Check range %u\n", _currentRange->rangeID());
+		_checkItems();
 	}
 	else {
 		log::Warning::L("Range %u not ready to replication\n", _currentRange->rangeID());
@@ -184,13 +275,36 @@ bool StorageCMDRangeIndexCheck::_setRecheckTimer()
 
 bool StorageCMDRangeIndexCheck::start()
 {
+	if (!_manager->clusterManager().isReady()) {
+		static const uint32_t STORAGES_INIT_WAIT_TIME_SEC_TIME = 1; // 1 second
+		if (!_recheckTimer->setTimer(STORAGES_INIT_WAIT_TIME_SEC_TIME, 0, 0, 0, this))
+			return false;
+		if (!_thread->ctrl(_recheckTimer)) {
+			log::Error::L("StorageCMDRangeIndexCheck: Can't add a timer event to the pool\n");
+			return false;
+		}
+		return true;
+	}
 	if (_ranges.empty()) { // start new range check
-		_ranges = _index->getControlledRanges();
+		_ranges = _manager->index().getControlledRanges();
 		if (_ranges.empty())
 			return _setRecheckTimer();
 	}
 	_currentRange = _ranges.back();
 	_ranges.pop_back();
+	auto storages = _currentRange->storages();
+	for (auto storage = storages.begin(); storage != storages.end(); storage++) {
+		StorageCMDEvent *storageEvent = new StorageCMDEvent(*storage, _thread, this);
+		_fillCMD(storageEvent);
+		EStorageAnswerStatus status =  EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+		if (storageEvent->makeCMD()) {
+			status = EStorageAnswerStatus::STORAGE_NO_ANSWER;
+		} else {
+			_thread->addToDeletedNL(storageEvent);
+			storageEvent = NULL;
+		}
+		_requests.push_back(StorageRequest(storageEvent, *storage, status));
+	}
 	
 	static const uint32_t STORAGES_MAXIMUM_WAIT_TIME_SEC_TIME = 5; // 5 seconds	
 	if (!_operationTimer->setTimer(STORAGES_MAXIMUM_WAIT_TIME_SEC_TIME, 0, 0, 0, this))

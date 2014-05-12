@@ -139,6 +139,7 @@ StorageEvent::ECallResult StorageEvent::_getRangeItems(const char *data)
 		log::Error::L("StorageEvent::_getRangeItems has received cmd.size < sizeof(RangeItemsRequest)\n");
 		return FINISHED;
 	}
+	EStorageAnswerStatus status = STORAGE_ANSWER_ERROR;
 	RangeItemsRequest request = *(RangeItemsRequest*)data;
 	if (_config->serverID() == request.serverID) {
 		_networkBuffer->clear();
@@ -149,11 +150,13 @@ StorageEvent::ECallResult StorageEvent::_getRangeItems(const char *data)
 			sa.status = STORAGE_ANSWER_OK;
 			sa.size = _networkBuffer->size() - currentBufferSize;
 			return _send();
+		} else { 
+			status = STORAGE_ANSWER_NOT_FOUND;
 		}
 	}
 	_networkBuffer->clear();
 	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
-	sa.status = STORAGE_ANSWER_ERROR;
+	sa.status = status;
 	sa.size = 0;
 	return _send();
 }

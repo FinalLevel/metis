@@ -82,6 +82,10 @@ namespace fl {
 			}
 			void ping(StoragePingAnswer &storageAnswer);
 			void error();
+			bool isPinged(time_t lastPing) const
+			{
+				return _lastPingTime >= lastPing;
+			}
 			static const uint8_t MAX_ERRORS_BEFORE_DOWN = 3;
 		private:
 			TServerID _id;
@@ -92,6 +96,7 @@ namespace fl {
 			uint32_t _weight;
 			int64_t _leftSpace;
 			uint8_t _errors;
+			time_t _lastPingTime;
 		};
 		
 		typedef std::vector<TServerID> TServerIDList;
@@ -104,10 +109,12 @@ namespace fl {
 			ClusterManager();
 			bool loadAll(Mysql &sql);
 			bool findFreeStorages(const size_t minimumCopies, TServerIDList &storageIDs, const int64_t minLeftSpace);
+			StorageNode *findFreeStorage(const int64_t minLeftSpace, TStorageList &storages);
 			TServerID findFreeManager();
 			void findStorages(TServerIDList &storageIds, TStorageList &storages);
 			bool startStoragesPinging(EPollWorkerThread *thread);
 			TStorageList storages();
+			bool isReady();
 		private:
 			bool _loadManagers(Mysql &sql);
 			bool _loadStorages(Mysql &sql);

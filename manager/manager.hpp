@@ -35,14 +35,17 @@ namespace fl {
 			bool findAndFill(ItemHeader &item, TRangePtr &range);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 			bool getPutStorages(const TRangeID rangeID, const TSize size, TStorageList &storages);
+			class StorageNode *getStorageForCopy(const TRangeID rangeID, const TSize size, TStorageList &storages);
 			class Config *config()
 			{
 				return _config;
 			}
+			bool startRangesChecking(EPollWorkerThread *thread);
 		private:
 			class Config *_config;
 			ClusterManager _clusterManager;
 			IndexManager _indexManager;
+			class StorageCMDRangeIndexCheck *_rangeIndexCheck;
 		};
 	};
 };
