@@ -13,6 +13,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include <cstdint>
+#include <vector>
+#include "socket.hpp"
 
 namespace fl {
 	namespace metis
@@ -96,6 +98,7 @@ namespace fl {
 			STORAGE_DELETE_ITEM,
 			STORAGE_PING,
 			STORAGE_GET_RANGE_ITEMS,
+			STORAGE_SYNC,
 		};
 		
 		struct StorageCmd
@@ -167,11 +170,22 @@ namespace fl {
 			ModTimeTag timeTag;
 		} __attribute__((packed));
 		
-		struct IndexSyncEntry
+		struct RangeSyncHeader
+		{
+			TServerID managerID;
+			TRangeID rangeID;
+			uint32_t count;
+		} __attribute__((packed));
+		
+		struct RangeSyncEntry
 		{
 			ItemHeader header;
 			TServerID fromServer;
+			fl::network::TIPv4 ip;
+			uint32_t port;
 		} __attribute__((packed));
+		
+		typedef std::vector<RangeSyncEntry> TIndexSyncEntryVector;
 	};
 };
 

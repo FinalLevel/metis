@@ -18,8 +18,128 @@
 using namespace fl::metis;
 using fl::utils::Buffer;
 
+StorageCMDSync::StorageCMDSync(class StorageCMDRangeIndexCheck *parent, EPollWorkerThread *thread)
+	: _parent(parent), _thread(thread), _operationTimer(new TimerEvent())
+{
+}
+
+StorageCMDSync::~StorageCMDSync()
+{
+	delete _operationTimer;
+	_clearEvents();
+}
+
+void StorageCMDSync::_clearEvents()
+{
+	for (auto a = _requests.begin(); a != _requests.end(); a++) {
+		if (!a->_event)
+			continue;
+		_thread->addToDeletedNL(a->_event);
+		a->_event = NULL;
+	}
+}
+
+void StorageCMDSync::_fillCMD(StorageCMDEvent *ev, TIndexSyncEntryVector &syncs)
+{
+	NetworkBuffer &buffer = ev->networkBuffer();
+	buffer.clear();
+	StorageCmd &storageCmd = *(StorageCmd*)buffer.reserveBuffer(sizeof(StorageCmd));
+	storageCmd.cmd = EStorageCMD::STORAGE_SYNC;
+	RangeSyncHeader rangeHeader;
+	rangeHeader.count = syncs.size();
+	rangeHeader.managerID = _parent->managerID();
+	rangeHeader.rangeID = _parent->rangeID();
+	storageCmd.size = sizeof(rangeHeader) + (sizeof(RangeSyncEntry) * rangeHeader.count);
+	buffer.add((char*)&rangeHeader, sizeof(rangeHeader));
+	for (auto sync = syncs.begin(); sync != syncs.end(); sync++)
+		buffer.add((char*)&*sync, sizeof(RangeSyncEntry));
+}
+
+bool StorageCMDSync::start(TStorageSyncMap &syncs)
+{
+	bool haveActiveRequests = false;
+	for (auto sync = syncs.begin(); sync != syncs.end(); sync++) {
+		StorageCMDEvent* storageEvent = new StorageCMDEvent(sync->first, _thread, this);
+		if (storageEvent) {
+			_fillCMD(storageEvent, sync->second);
+			if (storageEvent->makeCMD()) {
+				haveActiveRequests = true;
+				_requests.push_back(StorageRequest(storageEvent, sync->first, EStorageAnswerStatus::STORAGE_NO_ANSWER, 
+					sync->second));
+				continue;
+			} else {
+				_thread->addToDeletedNL(storageEvent);
+			}
+		}
+		_requests.push_back(StorageRequest(NULL, sync->first, EStorageAnswerStatus::STORAGE_ANSWER_ERROR, sync->second));
+	}
+	if (haveActiveRequests) {
+		static const uint32_t SYNC_WAIT_TIME = 60; // 1 minute;	
+		if (!_operationTimer->setTimer(SYNC_WAIT_TIME, 0, 0, 0, this))
+			return false;
+		if (!_thread->ctrl(_operationTimer)) {
+			log::Error::L("StorageCMDSync: Can't add a timer event to the pool\n");
+			return false;
+		}
+		return true;
+	} else {
+		return false;
+	}
+}
+
+void StorageCMDSync::timerCall(class TimerEvent *te)
+{
+	te->stop();
+	bool allOkey = true;
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_status != EStorageAnswerStatus::STORAGE_ANSWER_OK)
+			allOkey = false;
+	}
+	_parent->syncFinished(allOkey);
+}
+
+void StorageCMDSync::ready(class StorageCMDEvent *ev, const StorageAnswer &sa)
+{
+	bool completed = true;
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_event == ev) {
+			r->_status = sa.status;
+			_thread->addToDeletedNL(r->_event);
+			r->_event = NULL;
+		}
+		if (r->_status == EStorageAnswerStatus::STORAGE_NO_ANSWER)
+			completed = false;
+	}
+	if (completed)
+		timerCall(_operationTimer);
+}
+
+void StorageCMDSync::repeat(class StorageCMDEvent *ev)
+{
+	bool completed = true;
+	for (auto r = _requests.begin(); r != _requests.end(); r++) {
+		if (r->_event == ev) {
+			if (r->_reconnects < MAX_STORAGE_RECONNECTS) {
+				r->_reconnects++;
+				ev->reopen();
+				_fillCMD(ev, r->_syncs);
+				if (ev->makeCMD())
+					return;
+			}
+			r->_status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+			_thread->addToDeletedNL(r->_event);
+			r->_event = NULL;
+		}
+		if (r->_status == EStorageAnswerStatus::STORAGE_NO_ANSWER)
+			completed = false;
+	}
+	if (completed)
+		timerCall(_operationTimer);
+}
+
 StorageCMDRangeIndexCheck::StorageCMDRangeIndexCheck(Manager *manager, EPollWorkerThread *thread)
-	: _manager(manager), _thread(thread), _operationTimer(new TimerEvent()), _recheckTimer(new TimerEvent())
+	: _manager(manager), _thread(thread), _operationTimer(new TimerEvent()), _recheckTimer(new TimerEvent()),
+		_storageCMDSync(NULL)
 {
 }
 
@@ -98,13 +218,13 @@ void StorageCMDRangeIndexCheck::repeat(class StorageCMDEvent *ev)
 	bool completed = true;
 	for (auto r = _requests.begin(); r != _requests.end(); r++) {
 		if (r->_event == ev) {
-			if (r->_reconnects >= MAX_STORAGE_RECONNECTS)
-				return;
-			r->_reconnects++;
-			ev->reopen();
-			_fillCMD(ev);
-			if (ev->makeCMD())
-				return;
+			if (r->_reconnects < MAX_STORAGE_RECONNECTS) {
+				r->_reconnects++;
+				ev->reopen();
+				_fillCMD(ev);
+				if (ev->makeCMD())
+					return;
+			}
 			r->_status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
 			_thread->addToDeletedNL(r->_event);
 			r->_event = NULL;
@@ -119,10 +239,14 @@ void StorageCMDRangeIndexCheck::repeat(class StorageCMDEvent *ev)
 
 void StorageCMDRangeIndexCheck::_checkItems()
 {
+	if (_storageCMDSync) {
+		log::Error::L("_checkItems has been received not null _storageCMDSync\n");
+		return;
+	}
 	log::Warning::L("Check range %u (items: %u, servers: %u)\n", _currentRange->rangeID(), _items.size(), 
 		_requests.size());
 	
-	IndexSyncEntry syncEntry;
+	RangeSyncEntry syncEntry;
 	bzero(&syncEntry, sizeof(syncEntry));
 	syncEntry.header.rangeID = _currentRange->rangeID();
 	syncEntry.header.level = _currentRange->level();
@@ -170,12 +294,11 @@ void StorageCMDRangeIndexCheck::_checkItems()
 						syncEntry.header.timeTag.op++;
 						if (itemEntry->timeTag.tag >= timeTag.tag)
 							continue;
-						log::Info::L("Replace Item %u/%u from %u\n", item->first, _currentRange->rangeID(), 
+						log::Info::L("Delete old item %u/%u from %u\n", item->first, _currentRange->rangeID(), 
 							itemEntry->storage->id());
 					}
 					auto res = syncs.insert(TStorageSyncMap::value_type(itemEntry->storage, emptySyncVector));
 					res.first->second.push_back(syncEntry);
-
 				}
 			}
 		}
@@ -189,7 +312,11 @@ void StorageCMDRangeIndexCheck::_checkItems()
 				storages.size(), _manager->config()->minimumCopies());
 			StorageNode *copyStorage = _manager->getStorageForCopy(_currentRange->rangeID(), size, storages);
 			if (copyStorage) {
-				syncEntry.fromServer = storages[rand() % storages.size()]->id();
+				StorageNode *fromStorage =  storages[rand() % storages.size()];
+				syncEntry.fromServer = fromStorage->id();
+				syncEntry.ip = fromStorage->ip();
+				syncEntry.port = fromStorage->port();
+				
 				log::Info::L("Item %u/%u has found storage %u for copying from %u\n", item->first, _currentRange->rangeID(), 
 					copyStorage->id(), syncEntry.fromServer);
 				
@@ -202,7 +329,14 @@ void StorageCMDRangeIndexCheck::_checkItems()
 			}
 		}
 	}
-	
+	if (!syncs.empty()) {
+		_storageCMDSync = new StorageCMDSync(this, _thread);
+		if (!_storageCMDSync->start(syncs)) {
+			log::Error::L("Range %u couldn't start sync process\n", _currentRange->rangeID());
+			delete _storageCMDSync;
+			_storageCMDSync = NULL;
+		}
+	}
 }
 
 void StorageCMDRangeIndexCheck::_checkRange()
@@ -261,6 +395,24 @@ void StorageCMDRangeIndexCheck::timerCall(class TimerEvent *te)
 	}
 }
 
+void StorageCMDRangeIndexCheck::syncFinished(const bool status)
+{
+	log::Error::L("Range %u has %s finished sync process\n", _currentRange->rangeID(), 
+		status ? "successfully" : "unsuccessfully");
+	delete _storageCMDSync;
+	_storageCMDSync = NULL;
+}
+
+TRangeID StorageCMDRangeIndexCheck::rangeID() const
+{
+	return _currentRange->rangeID();
+}
+
+TServerID StorageCMDRangeIndexCheck::managerID() const
+{
+	return _manager->config()->serverID();
+}
+
 bool StorageCMDRangeIndexCheck::_setRecheckTimer()
 {
 	static const uint32_t STORAGES_RECHECK_TIME = 60 * 60; // 1 hour;	
@@ -278,6 +430,16 @@ bool StorageCMDRangeIndexCheck::start()
 	if (!_manager->clusterManager().isReady()) {
 		static const uint32_t STORAGES_INIT_WAIT_TIME_SEC_TIME = 1; // 1 second
 		if (!_recheckTimer->setTimer(STORAGES_INIT_WAIT_TIME_SEC_TIME, 0, 0, 0, this))
+			return false;
+		if (!_thread->ctrl(_recheckTimer)) {
+			log::Error::L("StorageCMDRangeIndexCheck: Can't add a timer event to the pool\n");
+			return false;
+		}
+		return true;
+	}
+	if (_storageCMDSync) { // wait until last sync commands will be finished
+		static const uint32_t STORAGES_SYNC_WAIT_TIME_SEC_TIME = 5; // 5 second
+		if (!_recheckTimer->setTimer(STORAGES_SYNC_WAIT_TIME_SEC_TIME, 0, 0, 0, this))
 			return false;
 		if (!_thread->ctrl(_recheckTimer)) {
 			log::Error::L("StorageCMDRangeIndexCheck: Can't add a timer event to the pool\n");
@@ -607,27 +769,25 @@ bool StorageCMDPut::start(TStorageList &storages, EPollWorkerThread *thread, Sto
 		StorageCMDEvent* storageEvent = _pool->get(*storage, thread, this);
 		if (storageEvent) {
 			TItemSize curSeek = 0;
-			if (!_fillCMD(storageEvent, curSeek))
-			{
-				_pool->free(storageEvent);
-				break;
-			}
-			_requests.push_back(StorageRequest(storageEvent, *storage, curSeek));
-			if (storageEvent->makeCMD()) {
-				haveActiveRequests = true;
+			if (_fillCMD(storageEvent, curSeek)) {
+				_requests.push_back(StorageRequest(storageEvent, *storage, curSeek));
+				if (storageEvent->makeCMD()) {
+					haveActiveRequests = true;
+				} else {
+					_pool->free(_requests.back()._event);
+					_requests.back()._event = NULL;
+					_requests.back()._status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+				}
+				continue;
 			} else {
-				_pool->free(_requests.back()._event);
-				_requests.back()._event = NULL;
-				_requests.back()._status = EStorageAnswerStatus::STORAGE_ANSWER_ERROR;
+				_pool->free(storageEvent);
 			}
-			continue;
 		}
 		_requests.push_back(StorageRequest(EStorageAnswerStatus::STORAGE_ANSWER_ERROR, *storage));
 	}
 	if (haveActiveRequests)
 		_interface = interface;
-	return haveActiveRequests;
-	
+	return haveActiveRequests;	
 }
 
 
@@ -702,13 +862,13 @@ void StorageCMDPut::repeat(class StorageCMDEvent *ev)
 {
 	for (auto request = _requests.begin(); request != _requests.end(); request++) {
 		if (request->_event == ev) {
-			if (request->_reconnects >= MAX_STORAGE_RECONNECTS)
-				return;
-			request->_reconnects++;
-			ev->reopen();
-			request->_seek = 0;
-			if (_fillCMD(ev, request->_seek) && ev->makeCMD())
-				return;
+			if (request->_reconnects < MAX_STORAGE_RECONNECTS) {
+				request->_reconnects++;
+				ev->reopen();
+				request->_seek = 0;
+				if (_fillCMD(ev, request->_seek) && ev->makeCMD())
+					return;
+			}
 			_error(ev);
 			return;
 		}

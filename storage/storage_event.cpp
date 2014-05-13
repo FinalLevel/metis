@@ -13,18 +13,21 @@
 #include "config.hpp"
 #include "metis_log.hpp"
 #include "storage.hpp"
+#include "sync_thread.hpp"
 
 using namespace fl::metis;
 
 
 Storage *StorageEvent::_storage = NULL;
 Config *StorageEvent::_config = NULL;
+SyncThread *StorageEvent::_syncThread = NULL;
 bool StorageEvent::_isReady = false;
 
-void StorageEvent::setInited(Storage *storage, class Config *config)
+void StorageEvent::setInited(Storage *storage, Config *config, SyncThread *syncThread)
 {
 	_storage = storage;
 	_config = config;
+	_syncThread = syncThread;
 	_isReady = true;
 }
 
@@ -57,7 +60,12 @@ void StorageEvent::_endWork()
 bool StorageEvent::_reset()
 {
 	_curState = ST_WAIT_REQUEST;
-	_networkBuffer->clear();
+	if (_networkBuffer)
+	{
+		auto threadSpecData = static_cast<StorageThreadSpecificData*>(_thread->threadSpecificData());
+		threadSpecData->bufferPool.free(_networkBuffer);
+		_networkBuffer = NULL;
+	}
 	setWaitRead();
 	bzero(&_cmd, sizeof(_cmd));
 	_putTmpFile.close();
@@ -133,6 +141,56 @@ StorageEvent::ECallResult StorageEvent::_deleteItem(const char *data)
 	return _send();
 }
 
+
+bool StorageEvent::_parseSyncRequest()
+{
+	Buffer dataBuffer(std::move(*_networkBuffer));
+	try
+	{
+		dataBuffer.skip(sizeof(StorageCmd));
+		RangeSyncHeader header;
+		dataBuffer.get(&header, sizeof(header));
+		RangeSyncEntry ie;
+		TIndexSyncEntryVector syncs;
+		for (decltype(header.count) i = 0; i < header.count; i++) {
+			dataBuffer.get(&ie, sizeof(ie));
+			if (ie.fromServer == 0) { // delete command
+				_storage->remove(ie.header);
+			}
+			else
+				syncs.push_back(ie);
+		}
+		if (syncs.empty()) {
+			return true;
+		} else {
+			return _syncThread->add(header.managerID, header.rangeID, syncs);
+		}
+	}
+	catch (Buffer::Error &er)
+	{
+		log::Error::L("Receive a bad sync range items answer\n");
+	}
+	return false;
+}
+
+StorageEvent::ECallResult StorageEvent::_sync(const char *data)
+{
+	if (_cmd.size < sizeof(RangeSyncHeader)) {
+		log::Error::L("StorageEvent::_sync has received cmd.size < sizeof(RangeSyncHeader)\n");
+		return FINISHED;
+	}
+	
+	EStorageAnswerStatus status = STORAGE_ANSWER_ERROR;
+	if (_parseSyncRequest()) {
+		status = STORAGE_ANSWER_OK;
+	}
+	_networkBuffer->clear();
+	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
+	sa.status = status;
+	sa.size = 0;
+	return _send();
+}
+
 StorageEvent::ECallResult StorageEvent::_getRangeItems(const char *data)
 {
 	if (_cmd.size < sizeof(RangeItemsRequest)) {
@@ -141,7 +199,10 @@ StorageEvent::ECallResult StorageEvent::_getRangeItems(const char *data)
 	}
 	EStorageAnswerStatus status = STORAGE_ANSWER_ERROR;
 	RangeItemsRequest request = *(RangeItemsRequest*)data;
-	if (_config->serverID() == request.serverID) {
+	if (!_syncThread->checkActive(request.rangeID))
+	{
+		log::Error::L("Sync thread already has task on range %u\n", request.rangeID);
+	} else if (_config->serverID() == request.serverID) {
 		_networkBuffer->clear();
 		_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
 		auto currentBufferSize = _networkBuffer->size();
@@ -221,6 +282,8 @@ StorageEvent::ECallResult StorageEvent::_parseCmd(const char *data)
 			return _ping(data);
 		case EStorageCMD::STORAGE_GET_RANGE_ITEMS:
 			return _getRangeItems(data);
+		case EStorageCMD::STORAGE_SYNC:
+			return _sync(data);
 		case EStorageCMD::STORAGE_NO_CMD:
 			return _nopCmd();
 		case EStorageCMD::STORAGE_PUT: // never come here

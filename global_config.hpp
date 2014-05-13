@@ -28,6 +28,8 @@ namespace fl {
 		
 		const size_t DEFAULT_BUFFER_SIZE = 32000;
 		const size_t DEFAULT_MAX_FREE_BUFFERS = 500;
+		
+		const uint32_t DEFAULT_MAX_MEMMORY_CHUNK = 64 * 1024;
 
 		class GlobalConfig
 		{
@@ -38,6 +40,10 @@ namespace fl {
 			const std::string& dbName() const
 			{
 				return _dbName;
+			}
+			uint32_t maxMemmoryChunk() const
+			{
+				return _maxMemmoryChunk;
 			}
 		protected:
 			void _parseUserGroupParams(boost::property_tree::ptree &pt, const char *level);
@@ -56,6 +62,8 @@ namespace fl {
 			std::string _dbPassword;
 			std::string _dbName;
 			uint16_t _dbPort;
+			
+			uint32_t _maxMemmoryChunk;
 		};
 	};
 };

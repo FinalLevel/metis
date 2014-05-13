@@ -22,7 +22,7 @@ Storage::Storage(const char *path, const double minFree, const TSize maxSliceSiz
 	}
 }
 
-bool Storage::add(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer)
+bool Storage::add(const char *data, const ItemHeader &itemHeader)
 {
 	IndexEntry ie;
 	ie.header = itemHeader;
@@ -31,7 +31,6 @@ bool Storage::add(const char *data, const ItemHeader &itemHeader, ItemPointer &p
 		return false;
 	}
 	_index.add(ie);
-	pointer = ie.pointer;
 	return true;
 }
 

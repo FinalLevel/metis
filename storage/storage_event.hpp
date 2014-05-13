@@ -36,7 +36,7 @@ namespace fl {
 			StorageEvent(const TEventDescriptor descr, const time_t timeOutTime);
 			virtual ~StorageEvent();
 			virtual const ECallResult call(const TEvents events);
-			static void setInited(class Storage *storage, class Config *config);
+			static void setInited(class Storage *storage, class Config *config, class SyncThread *syncThread);
 			static void exitFlush();
 		private:
 			void _endWork();
@@ -54,9 +54,12 @@ namespace fl {
 			ECallResult _deleteItem(const char *data);
 			ECallResult _ping(const char *data);
 			ECallResult _getRangeItems(const char *data);
+			ECallResult _sync(const char *data);
+			bool _parseSyncRequest();
 			static bool _isReady;
 			static class Storage *_storage;
 			static class Config *_config;
+			static class SyncThread *_syncThread;
 			NetworkBuffer *_networkBuffer;
 			EStorageState _curState;
 			StorageCmd _cmd;

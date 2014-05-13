@@ -35,6 +35,8 @@ GlobalConfig::GlobalConfig(int argc, char *argv[])
 	
 		_parseDBParams(_pt);
 		_parseUserGroupParams(_pt, "metis");
+		
+		_maxMemmoryChunk = _pt.get<decltype(_maxMemmoryChunk)>("metis.maxMemmoryChunk", DEFAULT_MAX_MEMMORY_CHUNK);
 	}
 	catch (ini_parser_error &err)
 	{

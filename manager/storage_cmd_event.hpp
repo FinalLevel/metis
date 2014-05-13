@@ -248,6 +248,41 @@ namespace fl {
 			TStorageRequestVector _requests;
 		};
 		
+		typedef std::map<StorageNode*, TIndexSyncEntryVector> TStorageSyncMap;
+
+		class StorageCMDSync : public BasicStorageCMD, TimerEventInterface
+		{
+		public:
+			StorageCMDSync(class StorageCMDRangeIndexCheck *parent, EPollWorkerThread *thread);
+			virtual ~StorageCMDSync();
+			bool start(TStorageSyncMap &syncs);
+			virtual void ready(class StorageCMDEvent *ev, const StorageAnswer &sa) override;
+			virtual void repeat(class StorageCMDEvent *ev) override;
+			virtual void timerCall(class TimerEvent *te) override;
+		private:
+			void _fillCMD(StorageCMDEvent *ev, TIndexSyncEntryVector &syncs);
+			void _clearEvents();
+			class StorageCMDRangeIndexCheck *_parent;
+			EPollWorkerThread *_thread;
+			TimerEvent *_operationTimer;
+			
+			struct StorageRequest
+			{
+				StorageRequest(StorageCMDEvent *event, StorageNode *storage, const EStorageAnswerStatus status, 
+					TIndexSyncEntryVector &syncs)
+					: _status(status), _event(event), _storage(storage), _syncs(syncs), _reconnects(0)
+				{
+				}
+				EStorageAnswerStatus _status;
+				StorageCMDEvent *_event;
+				StorageNode *_storage;
+				TIndexSyncEntryVector _syncs;
+				uint8_t _reconnects;
+			};
+			typedef std::vector<StorageRequest> TStorageRequestVector;
+			TStorageRequestVector _requests;
+		};
+		
 		class StorageCMDRangeIndexCheck : public BasicStorageCMD, TimerEventInterface
 		{
 		public:
@@ -257,6 +292,9 @@ namespace fl {
 			virtual void ready(class StorageCMDEvent *ev, const StorageAnswer &sa) override;
 			virtual void repeat(class StorageCMDEvent *ev) override;
 			virtual void timerCall(class TimerEvent *te) override;
+			void syncFinished(const bool status);
+			TServerID managerID() const;
+			TRangeID rangeID() const;
 		private:
 			void _fillCMD(StorageCMDEvent *ev);
 			bool _setRecheckTimer();
@@ -267,6 +305,7 @@ namespace fl {
 			EPollWorkerThread *_thread;
 			TimerEvent *_operationTimer;
 			TimerEvent *_recheckTimer;
+			StorageCMDSync *_storageCMDSync;
 			TRangePtrVector _ranges;
 			TRangePtr _currentRange;
 			struct ItemEntry
@@ -296,9 +335,6 @@ namespace fl {
 			};
 			typedef std::vector<StorageRequest> TStorageRequestVector;
 			TStorageRequestVector _requests;
-			
-			typedef std::vector<IndexSyncEntry> TIndexSyncEntryVector;
-			typedef std::map<StorageNode*, TIndexSyncEntryVector> TStorageSyncMap;
 		};
 
 	

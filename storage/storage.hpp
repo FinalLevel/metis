@@ -22,7 +22,7 @@ namespace fl {
 		{
 		public:
 			Storage(const char *path, const double minFree, const TSize maxSliceSize);
-			bool add(const char *data, const ItemHeader &itemHeader, ItemPointer &pointer);
+			bool add(const char *data, const ItemHeader &itemHeader);
 			bool add(const ItemHeader &itemHeader, File &putTmpFile, BString &buf);
 			bool remove(const ItemHeader &itemHeader);
 			bool findAndFill(const ItemIndex &itemIndex, GetItemInfoAnswer &itemInfo);

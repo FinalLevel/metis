@@ -19,7 +19,7 @@
 #include "accept_thread.hpp"
 #include "storage_event.hpp"
 #include "storage.hpp"
-
+#include "sync_thread.hpp"
 
 using fl::network::Socket;
 using fl::chrono::Time;
@@ -47,6 +47,7 @@ int main(int argc, char *argv[])
 	std::unique_ptr<Config> config;
 	std::unique_ptr<Storage> storage;
 	std::unique_ptr<EPollWorkerGroup> workerGroup;
+	std::unique_ptr<SyncThread> syncThread;
 	try
 	{
 		config.reset(new Config(argc, argv));
@@ -65,9 +66,9 @@ int main(int argc, char *argv[])
 		AcceptThread cmdThread(workerGroup.get(), &config->listenSocket(), factory);
 
 		storage.reset(new Storage(config->dataPath().c_str(), config->minDiskFree(), config->maxSliceSize()));
+		syncThread.reset(new SyncThread(storage.get(), config.get()));
 		
-		
-		StorageEvent::setInited(storage.get(), config.get());
+		StorageEvent::setInited(storage.get(), config.get(), syncThread.get());
 		setSignals();
 		workerGroup->waitThreads();
 	}

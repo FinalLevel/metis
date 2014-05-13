@@ -134,7 +134,7 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_get(TStorageList &storages
 {
 	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)_httpEvent->thread()->threadSpecificData();
 	std::unique_ptr<StorageCMDGet> storageCmd(new StorageCMDGet(storages, &threadSpec->storageCmdEventPool, _item, 
-		maxPostInMemmorySize()));
+		_manager->config()->maxMemmoryChunk()));
 	if (storageCmd->start(_httpEvent->thread(), this)) {
 		_storageCmd = storageCmd.release();
 		return EFormResult::RESULT_OK_WAIT;
