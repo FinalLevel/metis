@@ -10,6 +10,7 @@
 
 #include "global_config.hpp"
 #include "bstring.hpp"
+#include "metis_log.hpp"
 #include <grp.h>
 #include <pwd.h>
 

@@ -85,6 +85,7 @@ int main(int argc, char *argv[])
 		}
 		
 		ManagerWebDavInterface::setInited(manager.get());
+		ManagerHttpInterface::setInited(manager.get());
 		setSignals();
 		webWorkerGroup->waitThreads();
 		cmdWorkerGroup->waitThreads();

@@ -27,7 +27,7 @@ void ManagerWebDavInterface::setInited(Manager *manager)
 }
 
 ManagerWebDavInterface::ManagerWebDavInterface()
-	: _storageCmd(NULL)
+	: _storageCmd(NULL), _httpEvent(NULL)
 {
 }
 
@@ -206,7 +206,7 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_put(TStorageList &storages
 }
 
 ManagerWebDavInterface::EFormResult ManagerWebDavInterface::getMoreDataToSend(BString &networkBuffer, 
-	class HttpEvent *http) override
+	class HttpEvent *http)
 {
 	StorageCMDGet *getCMD = static_cast<StorageCMDGet*>(_storageCmd);
 	if (!getCMD) {
