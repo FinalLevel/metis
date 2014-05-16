@@ -126,6 +126,24 @@ namespace fl {
 				: rangeID(rangeID), itemKey(itemKey)
 			{
 			}
+			bool operator==(const ItemIndex &index) const
+			{
+				if (rangeID != index.rangeID)
+					return false;
+				if (itemKey == index.itemKey)
+					return true;
+				else
+					return false;
+			}
+			bool operator<(const ItemIndex &index) const
+			{
+				if (rangeID < index.rangeID)
+					return true;
+				else if (rangeID == index.rangeID)
+					return (itemKey < index.itemKey);
+				else
+					return false;
+			}
 			TRangeID rangeID;
 			TItemKey itemKey;
 		} __attribute__((packed));

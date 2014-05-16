@@ -403,7 +403,7 @@ bool SliceManager::add(File &putTmpFile, BString &buf, IndexEntry &ie)
 		return false;
 	if (_writeSlice->add(putTmpFile, buf, ie))
 	{
-		_leftSpace = __sync_sub_and_fetch(&_leftSpace, ie.header.size);
+		__sync_sub_and_fetch(&_leftSpace, ie.header.size);
 		return true;
 	} else {
 		return false;
@@ -417,7 +417,7 @@ bool SliceManager::add(const char *data, IndexEntry &ie)
 
 	if (_writeSlice->add(data, ie))
 	{
-		_leftSpace = __sync_sub_and_fetch(&_leftSpace, ie.header.size);
+		__sync_sub_and_fetch(&_leftSpace, ie.header.size);
 		return true;
 	} else {
 		return false;
