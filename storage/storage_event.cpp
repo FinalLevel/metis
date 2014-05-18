@@ -259,7 +259,7 @@ StorageEvent::ECallResult StorageEvent::_itemInfo(const char *data)
 	StorageAnswer &sa = *(StorageAnswer*)_networkBuffer->reserveBuffer(sizeof(StorageAnswer));
 	sa.status = STORAGE_ANSWER_NOT_FOUND;
 	sa.size = 0;
-	GetItemInfoAnswer itemInfo;
+	ItemInfo itemInfo;
 	if (_storage->findAndFill(itemIndex, itemInfo)) {
 		sa.status = STORAGE_ANSWER_OK;
 		sa.size = sizeof(itemInfo);

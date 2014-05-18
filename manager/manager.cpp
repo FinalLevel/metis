@@ -15,9 +15,23 @@
 using namespace fl::metis;
 
 Manager::Manager(Config* config)
-	: _config(config), _indexManager(config), _rangeIndexCheck(NULL)
+	: _config(config), _indexManager(config), 
+		_cache(config->cacheSize(), config->itemHeadersCacheSize(), config->itemsInLine(), config->minHitsToCache()), 
+		_rangeIndexCheck(NULL)
 {
-	
+	_timeThread = new fl::threads::TimeThread(5 * 60);
+	_timeThread->addEveryTick(new fl::threads::TimeTask<Manager>(this, &Manager::timeTic));
+	if (!_timeThread->create())
+	{
+		log::Fatal::L("Can't create a time thread\n");
+		throw std::exception();
+	}	
+}
+
+bool Manager::timeTic(fl::chrono::ETime &curTime)
+{
+	_cache.recycle();
+	return true;
 }
 
 bool Manager::loadAll()
@@ -43,12 +57,6 @@ bool Manager::addLevel(const TLevel level, const TSubLevel subLevel)
 	return true;
 }
 
-bool Manager::findAndFill(ItemHeader &item, TRangePtr &range)
-{
-	if (!_indexManager.findAndFill(item, range))
-		return false;
-	return true;
-}
 
 bool Manager::fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded)
 {

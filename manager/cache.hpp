@@ -47,25 +47,25 @@ namespace fl {
 			FIND_HEADER_ONLY,
 		};
 
-		typedef uint16_t TCacheLineIndex;
 		typedef uint16_t TCacheHits;
 		class ItemCache
 		{
 		public:
-			void update(const GetItemInfoAnswer &item, const TStorageList &storages, size_t &freedMem);
-			void set(TCacheLineIndex cacheIndex, const GetItemInfoAnswer &item, const TStorageList &storages);
+			void update(const ItemInfo &item, const TStorageList &storages, size_t &freedMem);
+			void set(TCacheLineIndex cacheIndex, const ItemInfo &item, const TStorageList &storages);
 			size_t free();
 			const TCacheLineIndex cacheIndex() const
 			{
 				return _cacheIndex;
 			}
-			bool replaceData(const GetItemInfoAnswer &item, const char *data, int64_t &usedMem, const uint32_t minHitsToCache);
+			bool replaceData(const ItemInfo &item, const char *data, int64_t &usedMem, const uint32_t minHitsToCache);
 			ItemCache()
 				: _data(NULL)
 			{
 			}
 			~ItemCache();
-			void hit(TItemSize &size, ModTimeTag &modTimeTag);
+			void hitAndFill(ItemInfo &item);
+			void fill(TStorageList &storages);
 			bool fillBuffer(BString &buffer);
 			bool haveData() const
 			{
@@ -78,6 +78,10 @@ namespace fl {
 			TItemSize size() const
 			{
 				return _size;
+			}
+			void divideHits()
+			{
+				_hits >>= 1; // div hit by 2
 			}
 		private:
 			static const uint8_t MAX_STORAGES = 3;
@@ -107,11 +111,11 @@ namespace fl {
 			{
 			}
 			void resize(const TCacheLineIndex countItemInfoItems, const uint32_t minHitsToCache);
-			bool replace(const GetItemInfoAnswer &item, const TStorageList &storages, size_t &freedMem);
-			bool replaceData(const GetItemInfoAnswer &item, const char *data, int64_t &usedMem);
-			ECacheFindResult find(const TRangeID rangeID, const TItemKey itemKey, TItemSize &size, ModTimeTag &modTimeTag,
-				BString &buffer);
+			bool replace(const ItemInfo &item, const TStorageList &storages, size_t &freedMem);
+			bool replaceData(const ItemInfo &item, const char *data, int64_t &usedMem);
+			ECacheFindResult findAndFill(ItemInfo &item, TStorageList &storages, BString &buffer);
 			bool remove(const ItemIndex &itemIndex, size_t &freedMem);
+			bool clear(const ItemIndex &index, size_t &freedMem);
 			size_t recycle(const size_t needFree);
 		private:
 
@@ -137,12 +141,16 @@ namespace fl {
 		public:
 			Cache(const size_t cacheSize, const size_t itemHeadersCacheSize, const TCacheLineIndex itemsInLine, 
 				const uint32_t minHitsToCache);
-			bool replace(const GetItemInfoAnswer &item, const TStorageList &storages);
-			bool remove(const ItemIndex &itemIndex);
-			bool replaceData(const GetItemInfoAnswer &item, const char *data);
 			
-			ECacheFindResult find(const TRangeID rangeID, const TItemKey itemKey, TItemSize &size, ModTimeTag &modTimeTag,
-				BString &buffer);
+			Cache(const Cache &) = delete;
+			Cache &operator=(const Cache &) = delete;
+			
+			bool replace(const ItemInfo &item, const TStorageList &storages);
+			bool remove(const ItemIndex &itemIndex);
+			bool clear(const ItemIndex &itemIndex);
+			bool replaceData(const ItemInfo &item, const char *data);
+			
+			ECacheFindResult findAndFill(ItemInfo &item, TStorageList &storages, BString &buffer);
 			
 			void recycle();
 			int64_t leftMem()

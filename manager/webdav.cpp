@@ -57,10 +57,16 @@ bool ManagerWebDavInterface::parseURI(const char* cmdStart, const EHttpVersion::
 		return false;
 
 	TCrc urlCrc;
-	if (!_manager->index().parseURL(host, fileName, _item, urlCrc)) {
+	
+	ItemLevelIndex levelIndex;
+	if (!_manager->index().parseURL(host, fileName, levelIndex, urlCrc)) {
 		_error = ERROR_400_BAD_REQUEST;
 		return false;
 	}
+	bzero(&_item, sizeof(_item));
+	_item.level = levelIndex.level;
+	_item.subLevel = levelIndex.subLevel;
+	_item.itemKey = levelIndex.itemKey;
 	return true;
 }
 
@@ -77,10 +83,12 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_formDelete(BString &networ
 {
 	_error = ERROR_404_NOT_FOUND;
 	TRangePtr range;
-	if (!_manager->findAndFill(_item, range)) {
+	if (!_manager->index().find(ItemLevelIndex(_item), range)) {
 		return EFormResult::RESULT_ERROR;
 	}
+	_item.rangeID = range->rangeID();
 	_item.timeTag = _manager->index().genNewTimeTag();
+	
 	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)http->thread()->threadSpecificData();
 	std::unique_ptr<StorageCMDDeleteItem> storageCmd(new StorageCMDDeleteItem(&threadSpec->storageCmdEventPool, _item));
 	_error = ERROR_503_SERVICE_UNAVAILABLE;
@@ -101,6 +109,7 @@ void ManagerWebDavInterface::deleteItem(class StorageCMDDeleteItem *cmd, const b
 	delete _storageCmd;
 	_storageCmd = NULL;
 	if (haveNormalyFinished) {
+		_manager->cache().remove(ItemIndex(_item.rangeID, _item.itemKey));
 		auto putResult = WebDavInterface::_formDelete(*_httpEvent->networkBuffer(), _httpEvent);
 		_httpEvent->sendAnswer(putResult);
 	} else {
@@ -114,9 +123,10 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_formGet(BString &networkBu
 {
 	_error = ERROR_404_NOT_FOUND;
 	TRangePtr range;
-	if (!_manager->findAndFill(_item, range)) {
+	if (!_manager->index().find(ItemLevelIndex(_item), range)) {
 		return EFormResult::RESULT_ERROR;
 	}
+	_item.rangeID = range->rangeID();
 	
 	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)http->thread()->threadSpecificData();
 	std::unique_ptr<StorageCMDItemInfo> storageCmd(new StorageCMDItemInfo(&threadSpec->storageCmdEventPool, 
@@ -133,8 +143,8 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_formGet(BString &networkBu
 WebDavInterface::EFormResult ManagerWebDavInterface::_get(TStorageList &storages)
 {
 	ManagerCmdThreadSpecificData *threadSpec = (ManagerCmdThreadSpecificData *)_httpEvent->thread()->threadSpecificData();
-	std::unique_ptr<StorageCMDGet> storageCmd(new StorageCMDGet(storages, &threadSpec->storageCmdEventPool, _item, 
-		_manager->config()->maxMemmoryChunk()));
+	std::unique_ptr<StorageCMDGet> storageCmd(new StorageCMDGet(storages, &threadSpec->storageCmdEventPool, 
+		ItemInfo(_item), _manager->config()->maxMemmoryChunk()));
 	if (storageCmd->start(_httpEvent->thread(), this)) {
 		_storageCmd = storageCmd.release();
 		return EFormResult::RESULT_OK_WAIT;
@@ -145,7 +155,8 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_get(TStorageList &storages
 WebDavInterface::EFormResult ManagerWebDavInterface::_get(StorageCMDItemInfo *cmd)
 {
 	TStorageList storageNodes;
-	if (!cmd->getStoragesAndFillItem(_item, storageNodes)) {
+	ItemInfo itemInfo(_item);
+	if (!cmd->getStoragesAndFillItem(itemInfo, storageNodes)) {
 		log::Error::L("Can't get item info\n");
 		return EFormResult::RESULT_ERROR;
 	}
@@ -155,6 +166,8 @@ WebDavInterface::EFormResult ManagerWebDavInterface::_get(StorageCMDItemInfo *cm
 		_error = ERROR_404_NOT_FOUND;
 		return EFormResult::RESULT_ERROR;
 	}
+	_item.size = itemInfo.size;
+	_item.timeTag = itemInfo.timeTag;
 	return _get(storageNodes);
 }
 
@@ -293,6 +306,7 @@ void ManagerWebDavInterface::itemPut(StorageCMDPut *cmd, const bool isCompleted)
 	delete _storageCmd;
 	_storageCmd = NULL;
 	if (isCompleted) {
+		_manager->cache().clear(ItemIndex(_item.rangeID, _item.itemKey));
 		auto putResult = WebDavInterface::_formPut(*_httpEvent->networkBuffer(), _httpEvent);
 		_httpEvent->sendAnswer(putResult);
 	} else {

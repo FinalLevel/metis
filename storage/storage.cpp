@@ -66,7 +66,7 @@ bool Storage::remove(const ItemHeader &itemHeader)
 	}
 }
 
-bool Storage::findAndFill(const ItemIndex &itemIndex, GetItemInfoAnswer &itemInfo)
+bool Storage::findAndFill(const ItemIndex &itemIndex, ItemInfo &itemInfo)
 {
 	Range::Entry entry;
 	if (!_index.find(itemIndex.rangeID, itemIndex.itemKey, entry))

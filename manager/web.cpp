@@ -65,10 +65,20 @@ bool ManagerHttpInterface::parseURI(const char *cmdStart, const EHttpVersion::EH
 	}
 	
 	TCrc urlCrc;
-	if (!_manager->index().parseURL(host, fileName, _item, urlCrc)) {
+	ItemLevelIndex levelIndex;
+	if (!_manager->index().parseURL(host, fileName, levelIndex, urlCrc)) {
 		_status |= ST_ERROR_NOT_FOUND;
 		return false;
 	}
+	if (!_manager->index().find(levelIndex, _range)) {
+		_status |= ST_ERROR_NOT_FOUND;
+		return EFormResult::RESULT_ERROR;
+	}
+	bzero(&_item, sizeof(_item));
+	_item.index.itemKey = levelIndex.itemKey;
+	_item.index.rangeID = _range->rangeID();
+	
+
 	_contentType = MimeType::getMimeTypeFromFileName(fileName);
 	return true;
 }
@@ -88,8 +98,10 @@ bool ManagerHttpInterface::formError(class BString &result, class HttpEvent *htt
 bool ManagerHttpInterface::parseHeader(const char *name, const size_t nameLength, const char *value, 
 	const size_t valueLen, const char *pEndHeader)
 {
-	if (_parseHost(name, nameLength, value, valueLen, _host)) {		
-	} else {
+
+	//if (_parseHost(name, nameLength, value, valueLen, host)) {		
+	//} else 
+	{
 		bool isKeepAlive = false;
 		if (_parseKeepAlive(name, nameLength, value, isKeepAlive)) {
 			if (isKeepAlive)
@@ -101,18 +113,54 @@ bool ManagerHttpInterface::parseHeader(const char *name, const size_t nameLength
 	return true;
 }
 
+ManagerHttpInterface::EFormResult ManagerHttpInterface::_formHead(BString &networkBuffer)
+{
+	return EFormResult::RESULT_ERROR;
+}
+
 ManagerHttpInterface::EFormResult ManagerHttpInterface::formResult(BString &networkBuffer, class HttpEvent *http)
 {
-	TRangePtr range;
-	if (!_manager->findAndFill(_item, range)) {
-		_status |= ST_ERROR_NOT_FOUND;
-		return EFormResult::RESULT_ERROR;
+	if (_status & ST_HEAD_REQUEST) { // HEAD request
+		return _formHead(networkBuffer);
 	}
+	auto contentType = MimeType::getMimeTypeStr(_contentType);
+	HttpAnswer answer(networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
+
+	TStorageList storages;
+	auto res = _manager->cache().findAndFill(_item, storages, networkBuffer);
+	switch (res)
+	{
+		case ECacheFindResult::FIND_NOT_FOUND:
+			_status |= ST_ERROR_NOT_FOUND;
+			return EFormResult::RESULT_ERROR;
+		case ECacheFindResult::FIND_FULL:
+			answer.setContentLength(_item.size);
+			return _keepAliveState();
+		case ECacheFindResult::FIND_HEADER_ONLY:
+		{
+			answer.setContentLength(_item.size);
+			bool haveUpStorage = false;
+			for (auto s = storages.begin(); s != storages.end(); s++) {
+				if ((*s)->isUp()) {
+					haveUpStorage = true;
+					break;
+				}
+			}
+			if (haveUpStorage)
+				return _get(storages);
+			else
+				break;
+		}
+		case ECacheFindResult::NOT_IN_CACHE:
+			break;
+	};
+	networkBuffer.clear();
+	
 	ManagerHttpThreadSpecificData *threadSpec = (ManagerHttpThreadSpecificData *)http->thread()->threadSpecificData();
 	std::unique_ptr<StorageCMDItemInfo> storageCmd(new StorageCMDItemInfo(&threadSpec->storageCmdEventPool, 
-		ItemIndex(_item.rangeID, _item.itemKey), http->thread()));
+		_item.index, http->thread()));
 	
-	if (!storageCmd->start(range->storages(), this)) {
+	if (!storageCmd->start(_range->storages(), this)) {
 		log::Error::L("_formGet: Can't make StorageItemInfo from the pool\n");
 		return EFormResult::RESULT_ERROR;
 	}
@@ -142,8 +190,11 @@ ManagerHttpInterface::EFormResult ManagerHttpInterface::_get(StorageCMDItemInfo 
 	delete _storageCmd;
 	_storageCmd = NULL;
 	if (storageNodes.empty()) {
+		_manager->cache().remove(_item.index);
 		_status |= ST_ERROR_NOT_FOUND;
 		return EFormResult::RESULT_ERROR;
+	} else {
+		_manager->cache().replace(_item, storageNodes);
 	}
 	return _get(storageNodes);
 }
@@ -164,17 +215,22 @@ void ManagerHttpInterface::itemGetChunkReady(class StorageCMDGet *cmd, NetworkBu
 		throw std::exception();
 	}
 	auto networkBuffer = _httpEvent->networkBuffer();
-	networkBuffer->clear();
 	if (isSended) {
+		networkBuffer->clear();
 		*networkBuffer = std::move(buffer);
 	} else {
-		auto contentType = MimeType::getMimeTypeStr(_contentType);
-		HttpAnswer answer(*networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
-		answer.setContentLength(_item.size);
+		if (!networkBuffer->size()) {
+			auto contentType = MimeType::getMimeTypeStr(_contentType);
+			HttpAnswer answer(*networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
+			answer.setContentLength(_item.size);
+		}
 		networkBuffer->add(buffer.c_str() + buffer.sended(), buffer.size() - buffer.sended());
 	}
 	
 	if (cmd->canFinish()) {
+		if ((buffer.size() - buffer.sended()) == (NetworkBuffer::TSize)_item.size) { // item fits in buffer
+			_manager->cache().replaceData(_item, buffer.c_str() + buffer.sended());
+		}
 		delete _storageCmd;
 		_storageCmd = NULL;
 		_httpEvent->sendAnswer(_keepAliveState()); 

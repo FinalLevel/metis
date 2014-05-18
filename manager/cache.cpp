@@ -17,12 +17,24 @@
 using namespace fl::metis;
 
 
-void ItemCache::hit(TItemSize &size, ModTimeTag &modTimeTag)
+void ItemCache::hitAndFill(ItemInfo &item)
 {
 	if (_hits < std::numeric_limits<decltype(_hits)>::max())
 		_hits++;
-	size = _size;
-	modTimeTag = _timeTag;
+	item.size = _size;
+	item.timeTag = _timeTag;
+}
+
+void ItemCache::fill(TStorageList &storages)
+{
+	storages.clear();
+	for (uint8_t s = 0; s < MAX_STORAGES; s++) {
+		if (_nodes[s]) {
+			storages.push_back(_nodes[s]);
+		} else {
+			break;
+		}
+	}
 }
 
 bool ItemCache::fillBuffer(BString &buffer)
@@ -51,7 +63,7 @@ size_t ItemCache::free()
 	}
 }
 
-void ItemCache::update(const GetItemInfoAnswer &item, const TStorageList &storages, size_t &freedMem)
+void ItemCache::update(const ItemInfo &item, const TStorageList &storages, size_t &freedMem)
 {
 	if (item.timeTag.tag != _timeTag.tag) {
 		freedMem += free();
@@ -70,7 +82,7 @@ void ItemCache::update(const GetItemInfoAnswer &item, const TStorageList &storag
 	}
 }
 
-void ItemCache::set(TCacheLineIndex cacheIndex, const GetItemInfoAnswer &item, const TStorageList &storages)
+void ItemCache::set(TCacheLineIndex cacheIndex, const ItemInfo &item, const TStorageList &storages)
 {
 	_cacheIndex = cacheIndex;
 	_hits = 0;
@@ -88,7 +100,7 @@ void ItemCache::set(TCacheLineIndex cacheIndex, const GetItemInfoAnswer &item, c
 	}
 }
 
-bool ItemCache::replaceData(const GetItemInfoAnswer &item, const char *data, int64_t &usedMem, 
+bool ItemCache::replaceData(const ItemInfo &item, const char *data, int64_t &usedMem, 
 	const uint32_t minHitsToCache)
 {
 	auto freedMem = free();
@@ -125,31 +137,44 @@ void CacheLine::_free(ItemCache *ic, size_t &freedMem)
 	freedMem += ic->free();
 }
 
-ECacheFindResult CacheLine::find(const TRangeID rangeID, const TItemKey itemKey, TItemSize &size, ModTimeTag &modTimeTag,
-				BString &buffer)
+ECacheFindResult CacheLine::findAndFill(ItemInfo &item, TStorageList &storages, BString &buffer)
 {
-	ItemIndex itemIndex(rangeID, itemKey);
 	AutoMutex autoSync(&_sync);
-	if (_notFoundItems.find(itemIndex) != _notFoundItems.end())
+	if (_notFoundItems.find(item.index) != _notFoundItems.end())
 		return ECacheFindResult::FIND_NOT_FOUND;
-	auto f = _items.find(itemIndex);
+	auto f = _items.find(item.index);
 	if (f == _items.end())
 		return ECacheFindResult::NOT_IN_CACHE;
 	
-	f->second->hit(size, modTimeTag);
+	f->second->hitAndFill(item);
 	if (f->second->fillBuffer(buffer))
 		return ECacheFindResult::FIND_FULL;
-	else
-		return ECacheFindResult::FIND_HEADER_ONLY;	
+	else {
+		f->second->fill(storages);
+		return ECacheFindResult::FIND_HEADER_ONLY;
+	}
 }
 
-bool CacheLine::replaceData(const GetItemInfoAnswer &item, const char *data, int64_t &usedMem)
+bool CacheLine::replaceData(const ItemInfo &item, const char *data, int64_t &usedMem)
 {
 	AutoMutex autoSync(&_sync);
 	auto f = _items.find(item.index);
 	if (f == _items.end())
 		return false;
 	return f->second->replaceData(item, data, usedMem, _minHitsToCache);
+}
+
+
+bool CacheLine::clear(const ItemIndex &index, size_t &freedMem)
+{
+	AutoMutex autoSync(&_sync);
+	auto f = _items.find(index);
+	if (f != _items.end()) {
+		_free(f->second, freedMem);
+		_items.erase(f);
+	}
+	_notFoundItems.erase(index);
+	return true;
 }
 
 bool CacheLine::remove(const ItemIndex &index, size_t &freedMem)
@@ -167,17 +192,15 @@ bool CacheLine::remove(const ItemIndex &index, size_t &freedMem)
 	return true;	
 }
 
-bool CacheLine::replace(const GetItemInfoAnswer &item, const TStorageList &storages, size_t &freedMem)
+bool CacheLine::replace(const ItemInfo &item, const TStorageList &storages, size_t &freedMem)
 {
 	AutoMutex autoSync(&_sync);
-	if (storages.empty()) { // it is a not found item
-	} else {
-		_notFoundItems.erase(item.index);
-		auto f = _items.find(item.index);
-		if (f != _items.end()) {
-			f->second->update(item, storages, freedMem);
-			return true;
-		}
+
+	_notFoundItems.erase(item.index);
+	auto f = _items.find(item.index);
+	if (f != _items.end()) {
+		f->second->update(item, storages, freedMem);
+		return true;
 	}
 	if (_freeIndexes.empty())
 		return false;
@@ -221,7 +244,7 @@ size_t CacheLine::recycle(const size_t needFree)
 		ItemCache *ic = hit->second;
 		if (needFreeIndexes > 0) {
 			needFreeIndexes--;
-		} else if (freedMemory > needFree)
+		} else if (freedMemory >= needFree)
 			break;
 		if (ic->haveData()) {
 			freedMemory += ic->size();
@@ -232,7 +255,8 @@ size_t CacheLine::recycle(const size_t needFree)
 	for (auto item = _items.begin(); item != _items.end(); item++) {
 		ItemCache *ic = item->second;
 		if (markedToFreeSet.find(ic->cacheIndex()) == markedToFreeSet.end()) {
-			savedItems.insert(TItemCacheMap::value_type(item->first, item->second));
+			ic->divideHits();
+			savedItems.insert(TItemCacheMap::value_type(item->first, ic));
 		} else {
 			size_t temp;
 			_free(ic, temp);
@@ -265,6 +289,19 @@ Cache::Cache(const size_t cacheSize, const size_t itemHeadersCacheSize, const TC
 }
 
 
+bool Cache::clear(const ItemIndex &index)
+{
+	if (_lines.empty())
+		return false;
+	auto lineNumber = index.itemKey % _lines.size();
+	size_t freedMem = 0;
+	auto res = _lines[lineNumber].clear(index, freedMem);
+	if (freedMem)
+		__sync_add_and_fetch(&_leftMem, freedMem);
+	return res;
+	
+}
+
 bool Cache::remove(const ItemIndex &index)
 {
 	if (_lines.empty())
@@ -277,7 +314,7 @@ bool Cache::remove(const ItemIndex &index)
 	return res;
 }
 
-bool Cache::replace(const GetItemInfoAnswer &item, const TStorageList &storages)
+bool Cache::replace(const ItemInfo &item, const TStorageList &storages)
 {
 	if (_lines.empty())
 		return false;
@@ -294,7 +331,7 @@ bool Cache::replace(const GetItemInfoAnswer &item, const TStorageList &storages)
 	return res;
 }
 
-bool Cache::replaceData(const GetItemInfoAnswer &item, const char *data)
+bool Cache::replaceData(const ItemInfo &item, const char *data)
 {
 	if (_leftMem < static_cast<int64_t>(item.size))
 		return false;
@@ -307,14 +344,13 @@ bool Cache::replaceData(const GetItemInfoAnswer &item, const char *data)
 	return res;	
 }
 
-ECacheFindResult Cache::find(const TRangeID rangeID, const TItemKey itemKey, TItemSize &size, ModTimeTag &modTimeTag,
-	BString &buffer)
+ECacheFindResult Cache::findAndFill(ItemInfo &item, TStorageList &storages, BString &buffer)
 {
 	if (_lines.empty())
 		return ECacheFindResult::NOT_IN_CACHE;
 	
-	auto lineNumber = itemKey % _lines.size();
-	return _lines[lineNumber].find(rangeID, itemKey, size, modTimeTag, buffer);	
+	auto lineNumber = item.index.itemKey % _lines.size();
+	return _lines[lineNumber].findAndFill(item, storages, buffer);	
 }
 
 void Cache::recycle()
@@ -335,6 +371,9 @@ void Cache::recycle()
 		else
 			needFree -=  freedMemory;
 	}
-	if (freedTotalMemory)
+	if (freedTotalMemory) {
 		__sync_add_and_fetch(&_leftMem, freedTotalMemory);
+		log::Info::L("Cache::recycle has been finished freedTotalMemory=%lld, leftMem=%lld\n", (int64_t)freedTotalMemory, 
+			_leftMem);
+	}
 }

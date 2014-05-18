@@ -58,7 +58,7 @@ namespace fl {
 		class StorageCMDGet : public BasicStorageCMD
 		{
 		public:
-			StorageCMDGet(const TStorageList &storages, class StorageCMDEventPool *pool, const ItemHeader &item, 
+			StorageCMDGet(const TStorageList &storages, class StorageCMDEventPool *pool, const ItemInfo &item, 
 				const TItemSize chunkSize);
 			virtual ~StorageCMDGet();
 			bool start(EPollWorkerThread *thread, StorageCMDGetInterface *interface);
@@ -142,7 +142,7 @@ namespace fl {
 			bool start(const TStorageList &storages, StorageCMDItemInfoInterface *interface);
 
 			TStorageList getPutStorages(const TSize size, const size_t minimumCopies);
-			bool getStoragesAndFillItem(ItemHeader &item, TStorageList &storageNodes);
+			bool getStoragesAndFillItem(ItemInfo &item, TStorageList &storageNodes);
 			
 			virtual void ready(class StorageCMDEvent *ev, const StorageAnswer &sa) override;
 			virtual void repeat(class StorageCMDEvent *ev) override;
@@ -168,7 +168,7 @@ namespace fl {
 					bzero(&_item, sizeof(_item));
 				}
 				EStorageAnswerStatus _status;
-				GetItemInfoAnswer _item;
+				ItemInfo _item;
 				StorageCMDEvent *_event;
 				StorageNode *_storage;
 				uint8_t _reconnects;

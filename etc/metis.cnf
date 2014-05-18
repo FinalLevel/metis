@@ -12,6 +12,13 @@ log=/var/log/metis/manager
 logLevel=4
 logStdout=on
 
+; Cache parameters
+cacheSize=128M
+itemHeadersCacheSize=12M
+itemsInLine=32768
+minHitsToCache=1
+
+
 [metis-storage]
 ; Overwrite user & group
 user=metis

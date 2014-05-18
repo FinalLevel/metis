@@ -129,8 +129,8 @@ namespace fl {
 		public:
 			IndexManager(class Config *config);
 			bool loadAll(Mysql &sql, class ClusterManager &clusterManager);
-			bool parseURL(const std::string &host, const std::string &fileName, ItemHeader &item, TCrc &crc);
-			bool findAndFill(ItemHeader &item, TRangePtr &range);
+			bool parseURL(const std::string &host, const std::string &fileName, ItemLevelIndex &item, TCrc &crc);
+			bool find(const ItemLevelIndex &item, TRangePtr &range);
 			bool fillAndAdd(ItemHeader &item, TRangePtr &range, class ClusterManager &clusterManager, bool &wasAdded);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 			bool loadLevel(const TLevel level, const TSubLevel subLevel, Mysql &sql);

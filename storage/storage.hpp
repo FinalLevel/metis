@@ -25,7 +25,7 @@ namespace fl {
 			bool add(const char *data, const ItemHeader &itemHeader);
 			bool add(const ItemHeader &itemHeader, File &putTmpFile, BString &buf);
 			bool remove(const ItemHeader &itemHeader);
-			bool findAndFill(const ItemIndex &itemIndex, GetItemInfoAnswer &itemInfo);
+			bool findAndFill(const ItemIndex &itemIndex, ItemInfo &itemInfo);
 			bool get(const GetItemChunkRequest &itemRequest, BString &data);
 			bool ping(StoragePingAnswer &storageAnswer);
 			bool getRangeItems(const TRangeID rangeID, BString &data);

@@ -36,6 +36,8 @@ namespace fl {
 		typedef uint32_t TItemModTime;
 		
 		typedef uint32_t TCrc;
+		
+		typedef uint16_t TCacheLineIndex;
 
 		union ModTimeTag
 		{
@@ -148,8 +150,32 @@ namespace fl {
 			TItemKey itemKey;
 		} __attribute__((packed));
 		
-		struct GetItemInfoAnswer
+		struct ItemLevelIndex
 		{
+			ItemLevelIndex()
+				: level(0), subLevel(0), itemKey(0)
+			{
+			}
+			ItemLevelIndex(const ItemHeader &itemHeader) 
+				: level(itemHeader.level), subLevel(itemHeader.subLevel), itemKey(itemHeader.itemKey)
+			{
+			}
+			TLevel level;
+			TSubLevel subLevel;
+			TItemKey itemKey;	
+		};
+		
+		struct ItemInfo
+		{
+			ItemInfo()
+				: size(0)
+			{
+				timeTag.tag = 0;
+			}
+			ItemInfo(const ItemHeader &itemHeader)
+				: index(itemHeader.rangeID, itemHeader.itemKey), size(itemHeader.size), timeTag(itemHeader.timeTag)
+			{
+			}
 			ItemIndex index;
 			TItemSize size;
 			ModTimeTag timeTag;

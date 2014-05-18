@@ -80,6 +80,10 @@ namespace fl {
 			{
 				return (_status & ST_ACTIVE);
 			}
+			bool isUp() const
+			{
+				return (_status & (ST_ACTIVE | ST_DOWN)) == ST_ACTIVE;
+			}
 			void ping(StoragePingAnswer &storageAnswer);
 			void error();
 			bool isPinged(time_t lastPing) const

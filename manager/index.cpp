@@ -270,7 +270,7 @@ bool IndexManager::loadAll(Mysql &sql, ClusterManager &clusterManager)
 	return true;
 }
 
-bool IndexManager::parseURL(const std::string &host, const std::string &fileName, ItemHeader &item, TCrc &crc)
+bool IndexManager::parseURL(const std::string &host, const std::string &fileName, ItemLevelIndex &item, TCrc &crc)
 {
 	bzero(&item, sizeof(item));
 	const char *pFileName = fileName.c_str();
@@ -313,7 +313,7 @@ bool RangeIndex::loadRange(TRangePtr &range, const TItemKey rangeIndex, IndexMan
 	return true;
 }
 
-bool IndexManager::findAndFill(ItemHeader &item, TRangePtr &range)
+bool IndexManager::find(const ItemLevelIndex &item, TRangePtr &range)
 {
 	AutoMutex autoSync(&_sync);
 	auto level = _index.find(item.level);
@@ -331,7 +331,6 @@ bool IndexManager::findAndFill(ItemHeader &item, TRangePtr &range)
 	
 	auto rangeIndex = rangesIndex->calcRangeIndex(item.itemKey);
 	if (rangesIndex->find(rangeIndex, range)) {
-		item.rangeID = range->rangeID();
 		return true;
 	}
 	else 

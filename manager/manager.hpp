@@ -14,6 +14,8 @@
 
 #include "cluster_manager.hpp"
 #include "index.hpp"
+#include "cache.hpp"
+#include "time_thread.hpp"
 
 namespace fl {
 	namespace metis {
@@ -31,8 +33,11 @@ namespace fl {
 			{
 				return _clusterManager;
 			}
+			Cache &cache()
+			{
+				return _cache;
+			}
 			bool fillAndAdd(ItemHeader &item, TRangePtr &range, bool &wasAdded);
-			bool findAndFill(ItemHeader &item, TRangePtr &range);
 			bool addLevel(const TLevel level, const TSubLevel subLevel);
 			bool getPutStorages(const TRangeID rangeID, const TSize size, TStorageList &storages);
 			class StorageNode *getStorageForCopy(const TRangeID rangeID, const TSize size, TStorageList &storages);
@@ -41,11 +46,14 @@ namespace fl {
 				return _config;
 			}
 			bool startRangesChecking(EPollWorkerThread *thread);
+			bool timeTic(fl::chrono::ETime &curTime);
 		private:
 			class Config *_config;
 			ClusterManager _clusterManager;
 			IndexManager _indexManager;
+			Cache _cache;
 			class StorageCMDRangeIndexCheck *_rangeIndexCheck;
+			fl::threads::TimeThread *_timeThread;
 		};
 	};
 };

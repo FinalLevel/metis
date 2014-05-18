@@ -583,9 +583,9 @@ bool StorageCMDPinging::start()
 	return true;
 }
 
-StorageCMDGet::StorageCMDGet(const TStorageList &storages, StorageCMDEventPool *pool, const ItemHeader &item, 
+StorageCMDGet::StorageCMDGet(const TStorageList &storages, StorageCMDEventPool *pool, const ItemInfo &item, 
 	const TItemSize chunkSize)
-	: _storageEvent(NULL), _pool(pool), _interface(NULL), _storages(storages), _item(item.rangeID, item.itemKey), 
+	: _storageEvent(NULL), _pool(pool), _interface(NULL), _storages(storages), _item(item.index), 
 	_itemSize(item.size), _chunkSize(chunkSize), _remainingSize(item.size), _reconnects(0)
 {
 	
@@ -924,7 +924,7 @@ bool StorageCMDItemInfo::start(const TStorageList &storages, StorageCMDItemInfoI
 }
 
 
-bool StorageCMDItemInfo::getStoragesAndFillItem(ItemHeader &item, TStorageList &storageNodes)
+bool StorageCMDItemInfo::getStoragesAndFillItem(ItemInfo &item, TStorageList &storageNodes)
 {
 	bool isThereErrorStorages = false;
 	for (auto a = _requests.begin(); a != _requests.end(); a++) {

@@ -49,7 +49,7 @@ namespace fl {
 		private:
 			static bool _isReady;
 			static class Manager *_manager;
-			ItemHeader _item;
+			ItemInfo _item;
 			BasicStorageCMD *_storageCmd;
 			HttpEvent *_httpEvent;
 			typedef uint8_t TStatus;
@@ -58,7 +58,7 @@ namespace fl {
 			static const TStatus ST_HEAD_REQUEST = 0x2;
 			static const TStatus ST_ERROR_NOT_FOUND = 0x4;
 			MimeType::EMimeType _contentType;
-			std::string _host;
+			TRangePtr _range;
 			
 			EFormResult _get(TStorageList &storages);
 			EFormResult _get(StorageCMDItemInfo *cmd);
@@ -66,6 +66,7 @@ namespace fl {
 			{
 				return (_status & ST_KEEP_ALIVE) ? EFormResult::RESULT_OK_KEEP_ALIVE : EFormResult::RESULT_OK_CLOSE;
 			}
+			EFormResult _formHead(BString &networkBuffer);
 		};
 	
 		class ManagerEventFactory : public WorkEventFactory 

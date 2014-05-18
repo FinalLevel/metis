@@ -27,6 +27,8 @@ namespace fl {
 		const size_t DEFAULT_MAX_CONNECTION_PER_STORAGE = 2;
 		const size_t DEFAULT_AVERAGE_ITEM_SIZE = 32000;
 		
+		const TCacheLineIndex DEFAULT_ITEMS_IN_LINE = 32 * 1024;
+		
 		class Config : public GlobalConfig
 		{
 		public:
@@ -106,9 +108,26 @@ namespace fl {
 			{
 				return _averageItemSize;
 			}
+			size_t cacheSize() const 
+			{
+				return _cacheSize;
+			}
+			size_t itemHeadersCacheSize() const
+			{
+				return _itemHeadersCacheSize;
+			}
+			TCacheLineIndex itemsInLine() const
+			{
+				return _itemsInLine;
+			}
+			uint32_t minHitsToCache() const
+			{
+				return _minHitsToCache;
+			}
 		private:
 			void _usage();
 			void _loadFromDB();
+			void _loadCacheParams();
 			
 			TServerID _serverID;
 			TStatus _status;
@@ -143,6 +162,11 @@ namespace fl {
 			size_t _maxConnectionPerStorage;
 			
 			size_t _averageItemSize;
+			
+			size_t _cacheSize; 
+			size_t _itemHeadersCacheSize;
+			TCacheLineIndex _itemsInLine;
+			uint32_t _minHitsToCache;
 		};
 	}
 }

@@ -12,6 +12,7 @@
 #include "config.hpp"
 #include "log.hpp"
 #include "metis_log.hpp"
+#include "util.hpp"
 
 using namespace fl::metis;
 using namespace boost::property_tree::ini_parser;
@@ -21,7 +22,8 @@ Config::Config(int argc, char *argv[])
 	: GlobalConfig(argc, argv), _serverID(0), _status(0), _logLevel(FL_LOG_LEVEL), _cmdPort(0), _webDavPort(0), 
 	_webPort(0), _cmdTimeout(0), _webTimeout(0), _webDavTimeout(0), _webWorkerQueueLength(0), _webWorkers(0),	
 	_cmdWorkerQueueLength(0), _cmdWorkers(0), _bufferSize(0), _maxFreeBuffers(0), _minimumCopies(0), 
-	_maxConnectionPerStorage(0), _averageItemSize(0)
+	_maxConnectionPerStorage(0), _averageItemSize(0), _cacheSize(0), _itemHeadersCacheSize(0), _itemsInLine(0),
+	_minHitsToCache(0)
 {
 	char ch;
 	optind = 1;
@@ -47,6 +49,7 @@ Config::Config(int argc, char *argv[])
 
 		_parseUserGroupParams(_pt, "metis-manager");
 		_loadFromDB();
+		_loadCacheParams();
 		
 		_cmdTimeout =  _pt.get<decltype(_webTimeout)>("metis-manager.cmdTimeout", DEFAULT_SOCKET_TIMEOUT);		
 		_webTimeout =  _pt.get<decltype(_webTimeout)>("metis-manager.webTimeout", DEFAULT_SOCKET_TIMEOUT);
@@ -87,6 +90,19 @@ Config::Config(int argc, char *argv[])
 void Config::_usage()
 {
 	printf("usage: metis_manager -s serverID [-c configPath]\n");
+}
+
+void Config::_loadCacheParams()
+{
+	_cacheSize = fl::utils::parseSizeString(_pt.get<std::string>("metis-manager.cacheSize", "0").c_str());
+	_itemHeadersCacheSize = fl::utils::parseSizeString(
+		_pt.get<std::string>("metis-manager.itemHeadersCacheSize", "0").c_str());
+	if (!_itemHeadersCacheSize) {
+		_itemHeadersCacheSize = _cacheSize * 0.1;
+		_cacheSize -= _itemHeadersCacheSize;
+	}
+	_itemsInLine = _pt.get<decltype(_itemsInLine)>("metis-manager.itemsInLine", DEFAULT_ITEMS_IN_LINE);
+	_minHitsToCache = _pt.get<decltype(_minHitsToCache)>("metis-manager.minHitsToCache", 1);
 }
 
 void Config::_loadFromDB()
