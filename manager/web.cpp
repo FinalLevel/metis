@@ -28,7 +28,7 @@ void ManagerHttpInterface::setInited(Manager *manager)
 }
 
 ManagerHttpInterface::ManagerHttpInterface()
-	: _storageCmd(NULL), _httpEvent(NULL), _status(0)
+	: _storageCmd(NULL), _httpEvent(NULL), _status(0), _ifModifiedSince(0)
 {
 }
 
@@ -38,6 +38,7 @@ bool ManagerHttpInterface::reset()
 		_status = 0;
 		delete _storageCmd;
 		_storageCmd = NULL;
+		_ifModifiedSince = 0;
 		return true;
 	} else {
 		return false;
@@ -60,8 +61,7 @@ bool ManagerHttpInterface::parseURI(const char *cmdStart, const EHttpVersion::EH
 	}
 	static const std::string CMD_HEAD("HEAD");
 	if (!strncasecmp(cmdStart, CMD_HEAD.c_str(), CMD_HEAD.size())) {
-		_status |= ST_HEAD_REQUEST;
-		return true;				
+		_status |= ST_HEAD_REQUEST;		
 	}
 	
 	TCrc urlCrc;
@@ -98,10 +98,8 @@ bool ManagerHttpInterface::formError(class BString &result, class HttpEvent *htt
 bool ManagerHttpInterface::parseHeader(const char *name, const size_t nameLength, const char *value, 
 	const size_t valueLen, const char *pEndHeader)
 {
-
-	//if (_parseHost(name, nameLength, value, valueLen, host)) {		
-	//} else 
-	{
+	if (_parseIfModifiedSince(name, nameLength, value, valueLen, _ifModifiedSince)) {		
+	} else {
 		bool isKeepAlive = false;
 		if (_parseKeepAlive(name, nameLength, value, isKeepAlive)) {
 			if (isKeepAlive)
@@ -113,32 +111,37 @@ bool ManagerHttpInterface::parseHeader(const char *name, const size_t nameLength
 	return true;
 }
 
-ManagerHttpInterface::EFormResult ManagerHttpInterface::_formHead(BString &networkBuffer)
+ManagerHttpInterface::EFormResult ManagerHttpInterface::_formNotModified(BString &networkBuffer)
 {
-	return EFormResult::RESULT_ERROR;
+	auto contentType = MimeType::getMimeTypeStr(_contentType);
+	networkBuffer.sprintfSet("HTTP/1.1 304 Not Modified\r\nContent-type: %s\r\nContent-Length: 0\r\n", contentType);
+	HttpAnswer::formLastModified(_item.timeTag.modTime, networkBuffer);
+	if (_status & ST_KEEP_ALIVE) {
+		networkBuffer << HttpAnswer::CONNECTION_KEEP_ALIVE << "\r\n";
+		return EFormResult::RESULT_OK_KEEP_ALIVE;
+	} else {
+		networkBuffer << HttpAnswer::CONNECTION_CLOSE << "\r\n";
+		return EFormResult::RESULT_OK_CLOSE;
+	}
 }
 
 ManagerHttpInterface::EFormResult ManagerHttpInterface::formResult(BString &networkBuffer, class HttpEvent *http)
 {
-	if (_status & ST_HEAD_REQUEST) { // HEAD request
-		return _formHead(networkBuffer);
-	}
+	bool isHeadRequest = (_status & ST_HEAD_REQUEST);
 	auto contentType = MimeType::getMimeTypeStr(_contentType);
 	HttpAnswer answer(networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
 
 	TStorageList storages;
-	auto res = _manager->cache().findAndFill(_item, storages, networkBuffer);
+	auto res = _manager->cache().findAndFill(_ifModifiedSince, _item, storages, answer, isHeadRequest);
 	switch (res)
 	{
 		case ECacheFindResult::FIND_NOT_FOUND:
 			_status |= ST_ERROR_NOT_FOUND;
 			return EFormResult::RESULT_ERROR;
 		case ECacheFindResult::FIND_FULL:
-			answer.setContentLength(_item.size);
 			return _keepAliveState();
 		case ECacheFindResult::FIND_HEADER_ONLY:
-		{
-			answer.setContentLength(_item.size);
+		{	
 			bool haveUpStorage = false;
 			for (auto s = storages.begin(); s != storages.end(); s++) {
 				if ((*s)->isUp()) {
@@ -151,6 +154,8 @@ ManagerHttpInterface::EFormResult ManagerHttpInterface::formResult(BString &netw
 			else
 				break;
 		}
+		case ECacheFindResult::FIND_NOT_MODIFIED:
+			return _formNotModified(networkBuffer);
 		case ECacheFindResult::NOT_IN_CACHE:
 			break;
 	};
@@ -195,6 +200,16 @@ ManagerHttpInterface::EFormResult ManagerHttpInterface::_get(StorageCMDItemInfo 
 		return EFormResult::RESULT_ERROR;
 	} else {
 		_manager->cache().replace(_item, storageNodes);
+		if (_item.timeTag.modTime == _ifModifiedSince)
+			return _formNotModified(*_httpEvent->networkBuffer());
+		else if (_status & ST_HEAD_REQUEST) {
+			auto contentType = MimeType::getMimeTypeStr(_contentType);
+			HttpAnswer answer(*_httpEvent->networkBuffer(), _ERROR_STRINGS[ERROR_200_OK], contentType, 
+				(_status & ST_KEEP_ALIVE)); 
+			answer.addLastModified(_item.timeTag.modTime);
+			answer.setContentLength(_item.size);
+			return _keepAliveState();
+		}
 	}
 	return _get(storageNodes);
 }
@@ -222,6 +237,7 @@ void ManagerHttpInterface::itemGetChunkReady(class StorageCMDGet *cmd, NetworkBu
 		if (!networkBuffer->size()) {
 			auto contentType = MimeType::getMimeTypeStr(_contentType);
 			HttpAnswer answer(*networkBuffer, _ERROR_STRINGS[ERROR_200_OK], contentType, (_status & ST_KEEP_ALIVE)); 
+			answer.addLastModified(_item.timeTag.modTime);
 			answer.setContentLength(_item.size);
 		}
 		networkBuffer->add(buffer.c_str() + buffer.sended(), buffer.size() - buffer.sended());

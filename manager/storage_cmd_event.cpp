@@ -569,12 +569,12 @@ void StorageCMDPinging::_ping()
 
 bool StorageCMDPinging::start()
 {
-	_ping();
 	if (!_timer) {
 		_timer = new TimerEvent();
 	}
 	static const uint32_t STORAGES_PING_SEC_TIME = 15; // each 15 seconds
-	if (!_timer->setTimer(STORAGES_PING_SEC_TIME, 0, STORAGES_PING_SEC_TIME, 0, this))
+	static const uint32_t WAIT_BEFORE_FIRST_PING_NANO_SEC = 100000000; // 100ms
+	if (!_timer->setTimer(0, WAIT_BEFORE_FIRST_PING_NANO_SEC, STORAGES_PING_SEC_TIME, 0, this))
 		return false;
 	if (!_thread->ctrl(_timer)) {
 		log::Error::L("StorageCMDPinging: Can't add a timer event to the pool\n");
@@ -1254,7 +1254,7 @@ bool StorageCMDEvent::_send()
 	if (_thread->ctrl(this)) {
 		return true;
 	} else {
-		log::Error::L("StorageCMDEvent: Can't add an event to the event thread\n");
+		log::Error::L("StorageCMDEvent::send Can't add an event to the event thread %u/%u\n", _state, _op);
 		return false;
 	}	
 }
@@ -1271,9 +1271,7 @@ bool StorageCMDEvent::makeCMD()
 		if (res == Socket::CN_NEED_RESET) {
 			log::Warning::L("StorageCMDEvent: Reset connection to %s:%u\n", Socket::ip2String(_storage->ip()).c_str(), 
 				_storage->port());
-			_socket.reopen();
-			_descr = _socket.descr();
-			_op = EPOLL_CTL_ADD;
+			reopen();
 			continue;
 		}
 
@@ -1289,7 +1287,7 @@ bool StorageCMDEvent::makeCMD()
 			if (_thread->ctrl(this)) {
 				return true;
 			} else {
-				log::Error::L("StorageCMDEvent: Can't add an event to the event thread\n");
+				log::Error::L("StorageCMDEvent::makeCMD Can't add an event to the event thread\n");
 				return false;
 			}
 		}

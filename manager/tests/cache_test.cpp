@@ -59,12 +59,13 @@ BOOST_AUTO_TEST_CASE (testCacheAddAndFindAndRemove)
 		BOOST_REQUIRE(cache.replaceData(item, testData.c_str())  == false);
 		BOOST_CHECK(cache.leftMem() == (int64_t)CACHE_SIZE);
 		
-		BString buffer;
+		BString b;
+		HttpAnswer buffer(b, "", "", 0); 
 		TStorageList findStorages;
 		ItemInfo findItem(item);
 		findItem.size = 0;
 		findItem.timeTag.tag = 0;
-		BOOST_REQUIRE(cache.findAndFill(findItem, findStorages, buffer) 
+		BOOST_REQUIRE(cache.findAndFill(0, findItem, findStorages, buffer) 
 			== ECacheFindResult::FIND_HEADER_ONLY);
 		BOOST_REQUIRE(findItem.size == item.size);
 		BOOST_REQUIRE(findItem.timeTag.tag == item.timeTag.tag);
@@ -72,25 +73,25 @@ BOOST_AUTO_TEST_CASE (testCacheAddAndFindAndRemove)
 		BOOST_REQUIRE(cache.replaceData(item, testData.c_str()));
 		BOOST_CHECK(cache.leftMem() == (int64_t)(CACHE_SIZE - item.size));
 		
-		BOOST_REQUIRE(cache.findAndFill(findItem, findStorages, buffer) 
+		BOOST_REQUIRE(cache.findAndFill(0, findItem, findStorages, buffer) 
 			== ECacheFindResult::FIND_FULL);
-		BOOST_REQUIRE((TItemSize)buffer.size() == item.size);
+		BOOST_REQUIRE((TItemSize)b.size() == (item.size + buffer.headersEnd()));
 		BOOST_REQUIRE(cache.replaceData(item, testData.c_str()) == false);
 		
 		storages.clear();
 		BOOST_REQUIRE(cache.replace(item, storages) == false);
 		BOOST_REQUIRE(cache.remove(item.index));
 		BOOST_CHECK(cache.leftMem() == (int64_t)CACHE_SIZE);
-		buffer.clear();
-		BOOST_REQUIRE(cache.findAndFill(findItem, findStorages, buffer) 
+
+		BOOST_REQUIRE(cache.findAndFill(0, findItem, findStorages, buffer) 
 			== ECacheFindResult::FIND_NOT_FOUND);
 		
 		item.index.itemKey++;
 		findItem.index.itemKey = item.index.itemKey;
-		BOOST_REQUIRE(cache.findAndFill(findItem, findStorages, buffer) 
+		BOOST_REQUIRE(cache.findAndFill(0, findItem, findStorages, buffer) 
 			== ECacheFindResult::NOT_IN_CACHE);
 		BOOST_REQUIRE(cache.remove(item.index));
-		BOOST_REQUIRE(cache.findAndFill(findItem, findStorages, buffer) 
+		BOOST_REQUIRE(cache.findAndFill(0, findItem, findStorages, buffer) 
 			== ECacheFindResult::FIND_NOT_FOUND);
 		BOOST_REQUIRE(cache.replaceData(item, testData.c_str()) == false);
 	}
@@ -123,21 +124,19 @@ BOOST_AUTO_TEST_CASE (testCacheRecycle)
 			BOOST_REQUIRE(cache.replace(item, storages));
 		}
 
-
-		BString buffer;
+		BString b;
+		HttpAnswer buffer(b, "", "", 0); 
 
 		for (int i = 0; i < 90; i++) {
-			buffer.clear();
 			item.index.itemKey = i + 1;
 			TStorageList storages;
-			BOOST_REQUIRE(cache.findAndFill(item, storages, buffer) 
+			BOOST_REQUIRE(cache.findAndFill(0, item, storages, buffer) 
 				== ECacheFindResult::FIND_HEADER_ONLY);
 		}
 		for (int i = 15; i < 90; i++) {
-			buffer.clear();
 			item.index.itemKey = i + 1;
 			TStorageList storages;
-			BOOST_REQUIRE(cache.findAndFill(item, storages, buffer) 
+			BOOST_REQUIRE(cache.findAndFill(0, item, storages, buffer) 
 				== ECacheFindResult::FIND_HEADER_ONLY);
 		}
 		BString testData;
@@ -150,10 +149,9 @@ BOOST_AUTO_TEST_CASE (testCacheRecycle)
 		cache.recycle();
 		
 		for (int i = 0; i < 15; i++) {
-			buffer.clear();
 			item.index.itemKey = i + 1;
 			TStorageList storages;
-			BOOST_REQUIRE(cache.findAndFill(item, storages, buffer) 
+			BOOST_REQUIRE(cache.findAndFill(0, item, storages, buffer) 
 				== ECacheFindResult::NOT_IN_CACHE);
 		}
 	}

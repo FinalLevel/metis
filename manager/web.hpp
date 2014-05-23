@@ -59,6 +59,7 @@ namespace fl {
 			static const TStatus ST_ERROR_NOT_FOUND = 0x4;
 			MimeType::EMimeType _contentType;
 			TRangePtr _range;
+			time_t _ifModifiedSince;
 			
 			EFormResult _get(TStorageList &storages);
 			EFormResult _get(StorageCMDItemInfo *cmd);
@@ -66,7 +67,7 @@ namespace fl {
 			{
 				return (_status & ST_KEEP_ALIVE) ? EFormResult::RESULT_OK_KEEP_ALIVE : EFormResult::RESULT_OK_CLOSE;
 			}
-			EFormResult _formHead(BString &networkBuffer);
+			EFormResult _formNotModified(BString &networkBuffer);
 		};
 	
 		class ManagerEventFactory : public WorkEventFactory 

@@ -31,6 +31,7 @@
 #include "mutex.hpp"
 #include "cluster_manager.hpp"
 #include "bstring.hpp"
+#include "http_answer.hpp"
 #include "../types.hpp"
 
 namespace fl {
@@ -38,6 +39,7 @@ namespace fl {
 		using fl::threads::Mutex;
 		using fl::threads::AutoMutex;
 		using fl::strings::BString;
+		using fl::http::HttpAnswer;
 		
 		enum class ECacheFindResult
 		{
@@ -45,6 +47,7 @@ namespace fl {
 			FIND_NOT_FOUND,
 			FIND_FULL,
 			FIND_HEADER_ONLY,
+			FIND_NOT_MODIFIED
 		};
 
 		typedef uint16_t TCacheHits;
@@ -66,7 +69,7 @@ namespace fl {
 			~ItemCache();
 			void hitAndFill(ItemInfo &item);
 			void fill(TStorageList &storages);
-			bool fillBuffer(BString &buffer);
+			bool fillBuffer(HttpAnswer &answer);
 			bool haveData() const
 			{
 				return _data != NULL;
@@ -113,7 +116,8 @@ namespace fl {
 			void resize(const TCacheLineIndex countItemInfoItems, const uint32_t minHitsToCache);
 			bool replace(const ItemInfo &item, const TStorageList &storages, size_t &freedMem);
 			bool replaceData(const ItemInfo &item, const char *data, int64_t &usedMem);
-			ECacheFindResult findAndFill(ItemInfo &item, TStorageList &storages, BString &buffer);
+			ECacheFindResult findAndFill(const uint32_t lastModified, ItemInfo &item, TStorageList &storages, 
+				HttpAnswer &answer, const bool onlyHeaders);
 			bool remove(const ItemIndex &itemIndex, size_t &freedMem);
 			bool clear(const ItemIndex &index, size_t &freedMem);
 			size_t recycle(const size_t needFree);
@@ -150,7 +154,8 @@ namespace fl {
 			bool clear(const ItemIndex &itemIndex);
 			bool replaceData(const ItemInfo &item, const char *data);
 			
-			ECacheFindResult findAndFill(ItemInfo &item, TStorageList &storages, BString &buffer);
+			ECacheFindResult findAndFill(const uint32_t lastModified, ItemInfo &item, TStorageList &storages, 
+				HttpAnswer &answer, const bool onlyHeaders = false);
 			
 			void recycle();
 			int64_t leftMem()

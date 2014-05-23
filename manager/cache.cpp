@@ -37,10 +37,10 @@ void ItemCache::fill(TStorageList &storages)
 	}
 }
 
-bool ItemCache::fillBuffer(BString &buffer)
+bool ItemCache::fillBuffer(HttpAnswer &answer)
 {
 	if (_data) {
-		buffer.add(_data, _size);
+		answer.add(_data, _size);
 		return true;
 	} else {
 		return false;
@@ -137,7 +137,8 @@ void CacheLine::_free(ItemCache *ic, size_t &freedMem)
 	freedMem += ic->free();
 }
 
-ECacheFindResult CacheLine::findAndFill(ItemInfo &item, TStorageList &storages, BString &buffer)
+ECacheFindResult CacheLine::findAndFill(const uint32_t lastModified, ItemInfo &item, TStorageList &storages, 
+	HttpAnswer &answer, const bool onlyHeaders)
 {
 	AutoMutex autoSync(&_sync);
 	if (_notFoundItems.find(item.index) != _notFoundItems.end())
@@ -147,8 +148,16 @@ ECacheFindResult CacheLine::findAndFill(ItemInfo &item, TStorageList &storages, 
 		return ECacheFindResult::NOT_IN_CACHE;
 	
 	f->second->hitAndFill(item);
-	if (f->second->fillBuffer(buffer))
+	if (item.timeTag.modTime == lastModified)
+		return ECacheFindResult::FIND_NOT_MODIFIED;
+	answer.addLastModified(item.timeTag.modTime);
+	answer.setContentLength(item.size);
+	if (onlyHeaders)
 		return ECacheFindResult::FIND_FULL;
+	
+	if (f->second->fillBuffer(answer)) {
+		return ECacheFindResult::FIND_FULL;
+	}
 	else {
 		f->second->fill(storages);
 		return ECacheFindResult::FIND_HEADER_ONLY;
@@ -344,13 +353,14 @@ bool Cache::replaceData(const ItemInfo &item, const char *data)
 	return res;	
 }
 
-ECacheFindResult Cache::findAndFill(ItemInfo &item, TStorageList &storages, BString &buffer)
+ECacheFindResult Cache::findAndFill(const uint32_t lastModified, ItemInfo &item, TStorageList &storages, 
+	HttpAnswer &answer, const bool onlyHeaders)
 {
 	if (_lines.empty())
 		return ECacheFindResult::NOT_IN_CACHE;
 	
 	auto lineNumber = item.index.itemKey % _lines.size();
-	return _lines[lineNumber].findAndFill(item, storages, buffer);	
+	return _lines[lineNumber].findAndFill(lastModified, item, storages, answer, onlyHeaders);	
 }
 
 void Cache::recycle()
