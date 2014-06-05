@@ -2,7 +2,7 @@ LDADD = ../fl_libs/libfl.a
 AM_CPPFLAGS=-I../fl_libs -DSYSCONFDIR=\"${sysconfdir}\"  $(MYSQL_INCLUDE)
 
 
-METIS_STORAGE_FILES = config.cpp storage.cpp range_index.cpp slice.cpp storage_event.cpp sync_thread.cpp \ 
+METIS_STORAGE_FILES = config.cpp storage.cpp range_index.cpp slice.cpp storage_event.cpp sync_thread.cpp \
   ../metis_log.cpp ../global_config.cpp
 
 bin_PROGRAMS = metis_storage

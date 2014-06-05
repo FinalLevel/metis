@@ -9,7 +9,7 @@ metis_manager_SOURCES = metis_manager.cpp $(METIS_MANAGER_FILES)
 metis_manager_LDFLAGS = $(MYSQL_LDFLAGS)
 
 check_PROGRAMS = metis_manager_test
-metis_manager_test_SOURCES = tests/test.cpp tests/cache_test.cpp tests/manager_test.cpp tests/test_config.cpp \ 
+metis_manager_test_SOURCES = tests/test.cpp tests/cache_test.cpp tests/manager_test.cpp tests/test_config.cpp \
   $(METIS_MANAGER_FILES)
 metis_manager_test_LDFLAGS = $(BOOST_LDFLAGS) $(BOOST_UNIT_TEST_FRAMEWORK_LIB) $(MYSQL_LDFLAGS)
 
