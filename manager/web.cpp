@@ -59,8 +59,7 @@ bool ManagerHttpInterface::parseURI(const char *cmdStart, const EHttpVersion::EH
 	if (!_isReady) {
 		return false;
 	}
-	static const std::string CMD_HEAD("HEAD");
-	if (!strncasecmp(cmdStart, CMD_HEAD.c_str(), CMD_HEAD.size())) {
+	if (_parseHTTPCmd(*cmdStart) == EHttpRequestType::HEAD) {
 		_status |= ST_HEAD_REQUEST;		
 	}
 	
