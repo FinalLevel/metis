@@ -289,9 +289,12 @@ Cache::Cache(const size_t cacheSize, const size_t itemHeadersCacheSize, const TC
 	if (cacheLines > 1)
 		countItemInfoItems = itemsInLine;
 	
-	_lines.resize(cacheLines);
+	for (size_t i = 0; i < cacheLines; i++) {
+		_lines.emplace_back(new CacheLine());
+	}
+	
 	for (auto line = _lines.begin(); line != _lines.end(); line++) {
-		line->resize(countItemInfoItems, minHitsToCache);
+		line->get()->resize(countItemInfoItems, minHitsToCache);
 	}
 	log::Info::L("Cache: %u cache lines was created with %u items in each, free data memory: %lld\n", 
 		(uint32_t)cacheLines, (uint32_t)countItemInfoItems, _leftMem);
@@ -304,7 +307,7 @@ bool Cache::clear(const ItemIndex &index)
 		return false;
 	auto lineNumber = index.itemKey % _lines.size();
 	size_t freedMem = 0;
-	auto res = _lines[lineNumber].clear(index, freedMem);
+	auto res = _lines[lineNumber]->clear(index, freedMem);
 	if (freedMem)
 		__sync_add_and_fetch(&_leftMem, freedMem);
 	return res;
@@ -317,7 +320,7 @@ bool Cache::remove(const ItemIndex &index)
 		return false;
 	auto lineNumber = index.itemKey % _lines.size();
 	size_t freedMem = 0;
-	auto res = _lines[lineNumber].remove(index, freedMem);
+	auto res = _lines[lineNumber]->remove(index, freedMem);
 	if (freedMem)
 		__sync_add_and_fetch(&_leftMem, freedMem);
 	return res;
@@ -334,7 +337,7 @@ bool Cache::replace(const ItemInfo &item, const TStorageList &storages)
 	
 	auto lineNumber = item.index.itemKey % _lines.size();
 	size_t freedMem = 0;
-	auto res = _lines[lineNumber].replace(item, storages, freedMem);
+	auto res = _lines[lineNumber]->replace(item, storages, freedMem);
 	if (freedMem)
 		__sync_add_and_fetch(&_leftMem, freedMem);
 	return res;
@@ -347,7 +350,7 @@ bool Cache::replaceData(const ItemInfo &item, const char *data)
 	
 	auto lineNumber = item.index.itemKey % _lines.size();
 	int64_t usedMem = 0;
-	auto res = _lines[lineNumber].replaceData(item, data, usedMem);
+	auto res = _lines[lineNumber]->replaceData(item, data, usedMem);
 	if (usedMem)
 		__sync_sub_and_fetch(&_leftMem, usedMem);
 	return res;	
@@ -360,7 +363,7 @@ ECacheFindResult Cache::findAndFill(const uint32_t lastModified, ItemInfo &item,
 		return ECacheFindResult::NOT_IN_CACHE;
 	
 	auto lineNumber = item.index.itemKey % _lines.size();
-	return _lines[lineNumber].findAndFill(lastModified, item, storages, answer, onlyHeaders);	
+	return _lines[lineNumber]->findAndFill(lastModified, item, storages, answer, onlyHeaders);	
 }
 
 void Cache::recycle()
@@ -374,7 +377,7 @@ void Cache::recycle()
 	}
 	size_t freedTotalMemory = 0;
 	for (auto line = _lines.begin(); line !=  _lines.end(); line++) {
-		size_t freedMemory = line->recycle(needFree / _lines.size());
+		size_t freedMemory = line->get()->recycle(needFree / _lines.size());
 		freedTotalMemory += freedMemory;
 		if (freedMemory >= needFree)
 			break;

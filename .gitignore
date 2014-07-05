@@ -1,6 +1,6 @@
 # autotools
 
-.deps
+\.deps
 Makefile
 Makefile\.in
 aclocal\.m4
@@ -13,11 +13,11 @@ config\.sub
 configure
 configure\.ac
 depcomp
-install-sh
+install\-sh
 missing
 stamp-h1
-autom4te.cache
-autom4te.cache/
+autom4te\.cache
+autom4te\.cache/
 manager/metis_manager
 manager/metis_manager_test
 storage/metis_storage

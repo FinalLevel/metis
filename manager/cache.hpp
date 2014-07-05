@@ -167,7 +167,8 @@ namespace fl {
 				return _lines.size();
 			}
 		private:
-			typedef std::vector<CacheLine> TCacheLineVector;
+			typedef std::unique_ptr<CacheLine> TCacheLinePtr;
+			typedef std::vector<TCacheLinePtr> TCacheLineVector;
 			TCacheLineVector _lines;
 			
 			int64_t _leftMem;
