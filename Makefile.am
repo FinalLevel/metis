@@ -8,3 +8,5 @@ LDADD = fl_libs/libfl.a
 
 metisconfdir=$(sysconfdir)
 metisconf_DATA = etc/metis.cnf
+
+dist_bin_SCRIPTS = metis_manager_wrapper.sh metis_storage_wrapper.sh

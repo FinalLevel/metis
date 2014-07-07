@@ -7,12 +7,12 @@
 # 
 # chkconfig: 2345 61 39
 # description: Metis Storage is a CDN and high available http server
-# processname: metis_manager
-# pidfile: /var/run/metis_manager.pid
+# processname: metis_storage
+# pidfile: /var/run/metis_storage.pid
 
 # Source function library.
 . /etc/rc.d/init.d/functions
-. /etc/sysconfig/metis_manager
+. /etc/sysconfig/metis_storage
 
 NAME=metis
 DESC="metis"
@@ -22,10 +22,10 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin
 # config
 #BIN_PATH="/usr/bin/"
 BIN_PATH="/home/draal/projects/fl/metis/"
-NAME="metis_manager"
-WRAPPER_NAME="metis_manager_wrapper.sh"
+NAME="metis_storage"
+WRAPPER_NAME="metis_storage_wrapper.sh"
 WRAPPER="$BIN_PATH$WRAPPER_NAME"
-PIDFILE="/var/run/metis_manager"
+PIDFILE="/var/run/metis_storage"
 
 function check_pid_names {
 	local pid="$1"
@@ -94,6 +94,7 @@ start() {
 	do
 		local param=SERVER$i
 		if [ ! -z "${!param}" ]; then
+			echo "Starting $NAME $i (${!param})"
 			start_server $i "${!param}"
 		fi
 	done
@@ -105,7 +106,7 @@ stop() {
 	do
 		local param=SERVER$i
 		if [ ! -z "${!param}" ]; then
-			echo -n "Stopping $NAME $i (${!param})"
+			echo "Stopping $NAME $i (${!param})"
 			stop_server $i "${!param}"
 		fi
 	done

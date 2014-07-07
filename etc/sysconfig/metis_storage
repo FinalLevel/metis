@@ -1,0 +1,2 @@
+#SERVER1="-s 1 -d /data1/metis"
+#SERVER2="-s 2 -d /data2/metis"
