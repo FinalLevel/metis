@@ -95,7 +95,7 @@ StorageNode *Range::_addNewNode(Config *config, class ClusterManager &clusterMan
 	Mysql sql;
 	if (!config->connectDb(sql)) {
 		log::Error::L("Range::_addNewNode: Cannot connect to db, check db parameters\n");
-		return false;
+		return NULL;
 	}
 	auto sqlBuf = sql.createQuery();
 	sqlBuf << "UPDATE index_range SET storageIDs='";

@@ -791,7 +791,7 @@ bool StorageCMDPut::start(TStorageList &storages, EPollWorkerThread *thread, Sto
 }
 
 
-bool StorageCMDPut::getMoreDataToSend(class StorageCMDEvent *ev) override
+bool StorageCMDPut::getMoreDataToSend(class StorageCMDEvent *ev)
 {
 	for (auto request = _requests.begin(); request != _requests.end(); request++) {
 		if (request->_event == ev) {
