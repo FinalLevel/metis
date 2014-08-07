@@ -19,7 +19,7 @@ PIDFILE="/var/run/metis_storage"
 DESCRIPTION="Metis storage server wrapper script"
 MAIL_CMD="/bin/mail"
 
-MAILTO="root@localhost"
+MAILTO="root"
 
 if [ "$#" == "0" ]; then
 	echo "Usage: ./metis_storage_wrapper.sh _num_ params"

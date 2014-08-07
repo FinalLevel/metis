@@ -14,15 +14,14 @@
 . /etc/rc.d/init.d/functions
 . /etc/sysconfig/metis_manager
 
-NAME=metis
-DESC="metis"
+NAME=metis_manager
+DESC="metis_manager"
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
 # config
 #BIN_PATH="/usr/bin/"
 BIN_PATH="/home/draal/projects/fl/metis/"
-NAME="metis_manager"
 WRAPPER_NAME="metis_manager_wrapper.sh"
 WRAPPER="$BIN_PATH$WRAPPER_NAME"
 PIDFILE="/var/run/metis_manager"

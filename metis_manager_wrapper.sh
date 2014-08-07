@@ -19,7 +19,7 @@ PIDFILE="/var/run/metis_manager"
 DESCRIPTION="Metis manager server wrapper script"
 MAIL_CMD="/bin/mail"
 
-MAILTO="root@localhost"
+MAILTO="root"
 
 if [ "$#" == "0" ]; then
 	echo "Usage: ./metis_manager_wrapper.sh _num_ params"

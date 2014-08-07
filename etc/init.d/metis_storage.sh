@@ -14,15 +14,14 @@
 . /etc/rc.d/init.d/functions
 . /etc/sysconfig/metis_storage
 
-NAME=metis
-DESC="metis"
+NAME=metis_storage
+DESC="metis_storage"
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
 # config
 #BIN_PATH="/usr/bin/"
 BIN_PATH="/home/draal/projects/fl/metis/"
-NAME="metis_storage"
 WRAPPER_NAME="metis_storage_wrapper.sh"
 WRAPPER="$BIN_PATH$WRAPPER_NAME"
 PIDFILE="/var/run/metis_storage"
