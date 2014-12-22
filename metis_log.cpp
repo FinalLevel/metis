@@ -10,13 +10,8 @@
 #include "metis_log.hpp"
 using namespace fl::metis::log;
 
-MetisLogSystem MetisLogSystem::_logSystem;
+int MetisLogSystem::_logLevel { FL_LOG_LEVEL};
 
-MetisLogSystem::MetisLogSystem()
-	: LogSystem("metis"), _logLevel(MAX_LOG_LEVEL)
-{
-	_logSystem.addTarget(new fl::log::ScreenTarget());
-}
 
 bool MetisLogSystem::log(
 	const size_t target, 
@@ -27,19 +22,20 @@ bool MetisLogSystem::log(
 	va_list args
 )
 {
-	if (level <= _logSystem._logLevel)
-		return _logSystem._log(target, level, curTime, ct, fmt, args);
+	if (level <= _logLevel)
+		return LogSystem::defaultLog().log(target, level, "MS", curTime, ct, fmt, args);
 	else
 		return false;
 }
 
+
 bool MetisLogSystem::init(const int logLevel, const std::string &logPath, const bool isLogStdout)
 {
-	_logSystem.clearTargets();
-	_logSystem._logLevel = logLevel;
+	LogSystem::defaultLog().clearTargets();
+	_logLevel = logLevel;
 	if (!logPath.empty())
-		_logSystem.addTarget(new fl::log::FileTarget(logPath.c_str()));
+		LogSystem::defaultLog().addTarget(new fl::log::FileTarget(logPath.c_str()));
 	if (isLogStdout)
-		_logSystem.addTarget(new fl::log::ScreenTarget());
+		LogSystem::defaultLog().addTarget(new fl::log::ScreenTarget());
 	return true;
 }

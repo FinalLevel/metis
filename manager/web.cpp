@@ -12,6 +12,7 @@
 #include "web.hpp"
 #include "config.hpp"
 #include "manager.hpp"
+#include "metis_log.hpp"
 
 using namespace fl::metis;
 using fl::http::HttpAnswer;

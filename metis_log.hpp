@@ -22,10 +22,9 @@ namespace fl {
 			using fl::log::TTargetList;
 			using fl::log::LogSystem;
 
-			class MetisLogSystem : public LogSystem
+			class MetisLogSystem
 			{
 			public:
-				MetisLogSystem();
 				static bool log(
 					const size_t target, 
 					const int level, 
@@ -36,8 +35,7 @@ namespace fl {
 				);
 				static bool init(const int logLevel, const std::string &logPath, const bool isLogStdout);
 			private:
-				static MetisLogSystem _logSystem;
-				int _logLevel;
+				static int _logLevel;
 			};
 		
 			using fl::log::Log;

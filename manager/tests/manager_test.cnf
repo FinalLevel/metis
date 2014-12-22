@@ -1,5 +1,5 @@
 [metis]
-dbHost=localhost
+dbHost=127.0.0.1
 dbUser=metis
 dbPassword=blaBlaBla
 ; Don't use the work database name
